@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
@@ -22,6 +23,7 @@ from .const import (
     REGIONS,
 )
 from .coordinator import LuxCloudCoordinator
+from .device import device_info
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,11 +55,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: LuxCloudConfigEntry) -> 
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    # Đăng ký device inverter TRƯỚC khi load platform: device dongle cần `via_device_id`
+    # trỏ vào id thật của device này (HA đã deprecate key `via_device` từ 2027.8).
+    serial = entry.data[CONF_SERIAL]
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, **device_info(coordinator, serial)
+    )
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     _LOGGER.info(
         "LuxCloud ready: %s (plant %s, dongle %s)",
-        entry.data[CONF_SERIAL],
+        serial,
         (coordinator.data.get("plant") or {}).get("plant_id"),
         (coordinator.data.get("dongle") or {}).get("sn"),
     )

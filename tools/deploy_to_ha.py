@@ -25,6 +25,11 @@ import urllib.request
 
 import paramiko
 
+# Console Windows mặc định là cp1252 → in tiếng Việt sẽ ném UnicodeEncodeError và làm
+# tool chết SAU khi deploy xong (đã gặp thật). Ép stdout/stderr sang UTF-8.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SRC = REPO / "custom_components" / "luxcloud_ha"
 REMOTE = "/config/custom_components/luxcloud_ha"
@@ -99,9 +104,11 @@ def restart() -> None:
     try:
         urllib.request.urlopen(req, timeout=30)
         print("restart: HTTP 200")
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
-        # Mất kết nối / 503 / 504 khi restart là BÌNH THƯỜNG — HA vẫn khởi động lại.
-        print(f"restart: {exc} (lỗi kết nối = đang restart, vẫn đúng)")
+    except Exception as exc:  # noqa: BLE001
+        # Mọi kiểu lỗi ở bước này đều là BÌNH THƯỜNG — HA đóng kết nối để khởi động lại.
+        # Đã gặp thật: HTTPError 503/504, URLError, và `http.client.RemoteDisconnected`
+        # (lớp này KHÔNG phải URLError nên except hẹp sẽ làm tool chết dù HA restart đúng).
+        print(f"restart: {type(exc).__name__}: {exc} (lỗi kết nối = đang restart, vẫn đúng)")
     for _ in range(24):
         time.sleep(5)
         try:

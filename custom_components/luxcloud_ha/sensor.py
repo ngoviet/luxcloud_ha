@@ -24,7 +24,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import CONF_SERIAL
 from .coordinator import LuxCloudCoordinator
-from .device import device_info, dongle_device_info
+from .device import device_info, dongle_device_info, parent_device_id
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -303,8 +303,9 @@ async def async_setup_entry(
 ) -> None:
     coordinator: LuxCloudCoordinator = entry.runtime_data
     serial = entry.data[CONF_SERIAL]
+    parent_id = parent_device_id(hass, serial, entry.entry_id)
     async_add_entities(
-        LuxCloudSensor(coordinator, serial, desc) for desc in SENSORS
+        LuxCloudSensor(coordinator, serial, desc, parent_id) for desc in SENSORS
     )
 
 
@@ -319,12 +320,13 @@ class LuxCloudSensor(CoordinatorEntity[LuxCloudCoordinator], SensorEntity):
         coordinator: LuxCloudCoordinator,
         serial: str,
         description: LuxSensorDescription,
+        parent_device_id: str | None = None,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{serial}_{description.key}"
         self._attr_device_info = (
-            dongle_device_info(coordinator, serial)
+            dongle_device_info(coordinator, serial, parent_device_id)
             if description.dongle
             else device_info(coordinator, serial)
         )
