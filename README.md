@@ -1,12 +1,12 @@
 # LuxCloud (LuxPower Cloud API) — Home Assistant Integration
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![GitHub release](https://img.shields.io/github/release/ngoviet/luxcloud-ha.svg)](https://github.com/ngoviet/luxcloud-ha/releases)
+[![GitHub release](https://img.shields.io/github/release/ngoviet/luxcloud_ha.svg)](https://github.com/ngoviet/luxcloud_ha/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5)](https://www.home-assistant.io)
 [![Python](https://img.shields.io/badge/python-3.14%2B-blue)](https://www.python.org)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ngoviet&repository=luxcloud-ha&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ngoviet&repository=luxcloud_ha&category=integration)
 
 Reads your **LuxPower** hybrid inverter through the **LuxCloud** cloud API — the same data the
 phone app shows, including the parts a local Modbus connection cannot see: dongle health,

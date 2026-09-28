@@ -1,14 +1,14 @@
 {
   "domain": "luxcloud_ha",
   "name": "LuxCloud (LuxPower Cloud API)",
-  "version": "0.1.0",
-  "documentation": "https://github.com/ngoviet/luxcloud-ha",
-  "issue_tracker": "https://github.com/ngoviet/luxcloud-ha/issues",
   "codeowners": ["@ngoviet"],
   "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/ngoviet/luxcloud_ha",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "dependencies": ["http"],
+  "issue_tracker": "https://github.com/ngoviet/luxcloud_ha/issues",
+  "quality_scale": "bronze",
   "requirements": [],
-  "quality_scale": "bronze"
+  "version": "0.1.0"
 }
