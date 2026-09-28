@@ -25,8 +25,10 @@ from .const import (
     EP_ENERGY,
     EP_EVENT,
     EP_FIRMWARE_BY_TYPE,
+    EP_FUNCTION_CONTROL,
     EP_LOGIN,
     EP_PLANT,
+    EP_QUICK_ACTION,
     EP_QUICK_STATUS,
     EP_REFRESH,
     EP_REMOTE_READ,
@@ -35,6 +37,9 @@ from .const import (
     FIRMWARE_BASE,
     FIRMWARE_TYPES,
     MAJOR_URL,
+    QUICK_ACTIONS,
+    QUICK_OPS,
+    REMOTE_SET_TYPE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -293,6 +298,56 @@ class LuxCloudApi:
         if not r.get("success"):
             return {}
         return {k: bool(r[k]) for k in CONFIG_BIT_KEYS if k in r}
+
+    # ── Đường GHI (Phase 2) ────────────────────────────────────
+    async def set_config_bit(self, function_param: str, enable: bool) -> bool:
+        """Bật/tắt một bit cấu hình qua `remoteSet/functionControl`.
+
+        ⚠️ `enable` phải gửi dạng CHUỖI `"true"`/`"false"` — đúng như APK gửi.
+        Trả `True` nếu cloud nhận (`success` là true).
+        """
+        r = await self._post(
+            EP_FUNCTION_CONTROL,
+            {
+                "inverterSn": self.serial,
+                "functionParam": function_param,
+                "enable": "true" if enable else "false",
+                "clientType": "APP",
+                "remoteSetType": REMOTE_SET_TYPE,
+            },
+        ) or {}
+        if not r.get("success"):
+            _LOGGER.warning(
+                "luxcloud: đặt bit %s=%s thất bại: %s",
+                function_param,
+                enable,
+                r.get("msg") or "không có phản hồi",
+            )
+            return False
+        _LOGGER.info("luxcloud: đã đặt bit %s=%s qua cloud", function_param, enable)
+        return True
+
+    async def set_quick(self, action: str, op: str) -> bool:
+        """Bắt đầu/dừng quick charge hoặc quick discharge (ghi qua cloud).
+
+        `action` ∈ QUICK_ACTIONS (`quickCharge`/`quickDischarge`), `op` ∈ QUICK_OPS
+        (`start`/`stop`).
+        """
+        if action not in QUICK_ACTIONS:
+            raise ValueError(f"action không hợp lệ: {action!r}")
+        if op not in QUICK_OPS:
+            raise ValueError(f"op không hợp lệ: {op!r}")
+        r = await self._post(
+            EP_QUICK_ACTION.format(action=action, op=op),
+            {"inverterSn": self.serial, "clientType": "APP"},
+        ) or {}
+        if not r.get("success"):
+            _LOGGER.warning(
+                "luxcloud: %s/%s thất bại: %s", action, op, r.get("msg") or "không có phản hồi"
+            )
+            return False
+        _LOGGER.info("luxcloud: đã gửi %s/%s qua cloud", action, op)
+        return True
 
     async def get_day_curve(self, date_text: str) -> dict:
         r = await self._post(

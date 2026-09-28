@@ -7,7 +7,8 @@ repo (gitignored) hoặc biến môi trường. Nếu thiếu, script tự lùi 
 |---|---|---|
 | `deploy_to_ha.py` | Deploy `custom_components/luxcloud_ha/` lên HA qua SSH + base64, verify md5 từng file; `--restart` để restart HA và chờ nó trở lại | `python tools/deploy_to_ha.py --restart` |
 | `hass.py` | Helper chung: `run` (shell), `cfgcheck` (`check_config`), `restart`, `deploy`, `deploydir`, `state`, `states` | `python tools/hass.py cfgcheck` |
-| `verify_live.py` | Nghiệm thu sau deploy: config entry, 29 entity, quan hệ device (`via_device_id`), đếm cảnh báo deprecate/ERROR **chỉ sau lần boot cuối** | `python tools/verify_live.py` |
+| `verify_live.py` | Nghiệm thu sau deploy: config entry, 36 entity, quan hệ device (`via_device_id`), đếm cảnh báo deprecate/ERROR **chỉ sau lần boot cuối** | `python tools/verify_live.py` |
+| `probe_write_live.py` | Nghiệm thu **đường GHI** trên HA thật: gọi `luxcloud_ha.set_bit` với giá trị **TRÙNG trạng thái hiện tại** (nên không đổi hành vi inverter), rồi xác nhận không bit nào đổi. KHÔNG đụng quick charge/discharge | `python tools/probe_write_live.py` |
 | `ws.js` | WebSocket client chung (device/entity registry, lovelace…) — Node ≥ 22, không cần `node_modules` | `node tools/ws.js cmds.json luxcloud` |
 | `make_brand.py` | Sinh `brand/{icon,icon@2x,logo}.png` bằng stdlib (máy không có PIL) | `python tools/make_brand.py` |
 | `setup_tests.py` | Dựng `.venv` để chạy `tests/` (cài `requirements_test.txt`, đặt stub POSIX trên Windows); `--run` để chạy pytest luôn | `python tools/setup_tests.py --run` |

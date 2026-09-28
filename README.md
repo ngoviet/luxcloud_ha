@@ -12,11 +12,13 @@
 Reads your **LuxPower** hybrid inverter through the **LuxCloud** cloud API — the same data the
 phone app shows, including the parts a local Modbus connection cannot see: dongle health,
 localised fault history, BMS cell detail, the firmware catalogue, the intraday power curve,
-yearly totals and the HR[179] configuration bits.
+yearly totals and the HR[179] configuration bits. It can also **write** the handful of settings
+only the cloud exposes.
 
-> **Phase 1 — read-only.** 29 entities, 2 devices. No switch/number/select platforms yet;
-> the write path (configuration bits, quick charge/discharge) is the next milestone.
-> See [Roadmap](#roadmap).
+> **36 entities, 2 devices.** 29 read-only entities, plus 3 `switch` entities for the HR[179]
+> configuration bits a local Modbus integration does not expose, 4 `button`s for
+> quick charge/discharge, and a `luxcloud_ha.set_bit` service.
+> See [Writing to the inverter](#writing-to-the-inverter).
 
 ---
 
@@ -43,13 +45,15 @@ LuxPower cloud account are.
 
 ## Features
 
-- **29 entities across 2 devices** — one device per inverter, plus the datalogger as a
+- **36 entities across 2 devices** — one device per inverter, plus the datalogger as a
   separate device linked with `via_device`.
 - **Config flow with validation** — credentials and serial are verified during setup, plus a
   reauth step and an options step (no YAML at all).
 - **Adjustable polling** — 60 s to 3600 s (default 300 s).
 - **Slow-key scheduling** — firmware catalogue, intraday curve and yearly totals are fetched
   every 6th poll (~30 min), so the fast path stays cheap.
+- **Writes only what the cloud owns** — 3 `switch` entities plus quick charge/discharge
+  `button`s and a `set_bit` service. See [Writing to the inverter](#writing-to-the-inverter).
 - **Diagnostics support** — download a redacted config dump from the UI.
 - **No third-party dependencies** — stdlib plus Home Assistant itself (`requirements: []`).
 - **Real fault text** — the cloud returns already-localised fault strings (Vietnamese here),
@@ -127,6 +131,11 @@ Multiple inverters: add the integration once per serial number.
 | `sensor.*_bit_cau_hinh_hr_179_dang_bat` | | Count of enabled HR[179] bits (map in attributes) |
 | `sensor.*_trang_thai_quick_charge_discharge` | | Cloud-side quick charge/discharge state |
 | `sensor.*_tong_san_luong_plant` | kWh | Plant lifetime yield |
+| `switch.*_grid_peak_shaving` | | `FUNC_GRID_PEAK_SHAVING` — **writes** (see below) |
+| `switch.*_gen_peak_shaving` | | `FUNC_GEN_PEAK_SHAVING` — **writes** |
+| `switch.*_active_power_limit_mode` | | `FUNC_ACTIVE_POWER_LIMIT_MODE` — **writes** |
+| `button.*_quick_charge_start` / `_quick_charge_stop` | | Force battery charging (cloud side) — **writes** |
+| `button.*_quick_discharge_start` / `_quick_discharge_stop` | | Force battery discharging (cloud side) — **writes** |
 | `binary_sensor.*_su_co_dang_hieu_luc` | | A fault is currently active |
 | `binary_sensor.*_dang_chay_quick_charge_discharge` | | A quick charge/discharge task is running |
 | `binary_sensor.*_co_firmware_moi` | | Newer firmware available than installed |
@@ -148,6 +157,43 @@ Multiple inverters: add the integration once per serial number.
 
 ---
 
+## Writing to the inverter
+
+Everything below is a **real write** — cloud → datalogger → inverter, exactly what the phone
+app does when you flip one of these in its settings screens. Nothing here is a local register
+write.
+
+| What | How |
+|---|---|
+| `FUNC_GRID_PEAK_SHAVING`, `FUNC_GEN_PEAK_SHAVING`, `FUNC_ACTIVE_POWER_LIMIT_MODE` | The 3 `switch` entities |
+| Quick charge / quick discharge | The 4 `button` entities (`start`/`stop` each) |
+| Any other HR[179] bit | The `luxcloud_ha.set_bit` service |
+
+```yaml
+service: luxcloud_ha.set_bit
+target:
+  device_id: 1a2b3c...        # optional when only one inverter is configured
+data:
+  function: FUNC_RSD_DISABLE
+  enable: true
+```
+
+### Why only three switches
+
+`FUNC_GRID_PEAK_SHAVING`, `FUNC_GEN_PEAK_SHAVING` and `FUNC_ACTIVE_POWER_LIMIT_MODE` belong to
+the HR[179] block, which a local Modbus integration does **not** expose — so there is no second
+way to change them.
+
+The other bits this integration can read overlap with settings a local Modbus integration
+already owns. Those deliberately have **no** `switch` entity, because two integrations writing
+the same inverter setting is how you get them fighting each other. Use the `set_bit` service if
+you genuinely need one, and pick a single source of truth for each setting.
+
+Switches report `unavailable` when the cloud has not returned the bit map, rather than guessing
+a state — so a stale `off` is never mistaken for a real one.
+
+---
+
 ## Notes and limitations
 
 - **Unofficial API.** Everything here was reverse engineered from the LuxCloud Android app
@@ -166,6 +212,12 @@ Multiple inverters: add the integration once per serial number.
 - **Account sharing.** Like the phone app, this integration logs into your cloud account. A
   session is refreshed transparently; if you see intermittent auth errors while the app is
   open, increase the scan interval.
+- **Writes go through the vendor cloud.** A write is only as reliable as the cloud→datalogger
+  link: it needs the dongle online, and it takes a few seconds to show up in the reading. A
+  rejected write raises an error in Home Assistant instead of silently pretending it worked.
+- **Writing is only tested on one inverter model.** The read path is verified broadly; the
+  write endpoints (`remoteSet/functionControl`) were confirmed on a single `CHAA` 6.5 kW unit.
+  Treat the first write on a different model as something to watch.
 
 ---
 
@@ -185,13 +237,12 @@ Multiple inverters: add the integration once per serial number.
 
 | Phase | Content | State |
 |---|---|---|
-| 1 | Read-only: health, faults, BMS, power, energy, firmware, day curve, totals, config bits | ✅ shipped |
-| 2 | `switch` for HR[179] config bits, `button`/services for quick charge/discharge and `set_bit` | ⏳ planned |
-| 3 | Options polish, translations, HACS default submission | ⏳ planned |
+| 1 | Read-only: health, faults, BMS, power, energy, firmware, day curve, totals, config bits | ✅ shipped as `v1.0.0` |
+| 2 | `switch` for HR[179] config bits, `button`s for quick charge/discharge, `set_bit` service | ✅ shipped |
+| 3 | Options polish, more translations, HACS default submission | ⏳ planned |
 
-Until phase 2 lands, write access stays out of the integration on purpose: an integration that
-can quietly change inverter settings needs the register map verified on more than one device
-type first.
+Writes stay deliberately narrow: only the settings the cloud owns, and only bits a local Modbus
+integration does not already control.
 
 ---
 
@@ -208,16 +259,24 @@ All tooling runs from the repository root and needs no third-party packages beyo
 | Command | Purpose |
 |---|---|
 | `python tools/deploy_to_ha.py --restart` | push `custom_components/luxcloud_ha/` to a Home Assistant host over SSH, verify every file by md5, then restart and wait for it to come back |
-| `python tools/verify_live.py` | acceptance check: config entry, all 29 entities, the inverter↔dongle device link, and the count of deprecation/error lines **after the last boot only** |
+| `python tools/verify_live.py` | acceptance check: config entry, all 36 entities, the inverter↔dongle device link, and the count of deprecation/error lines **after the last boot only** |
 | `python tools/hass.py cfgcheck` | run `check_config` inside the Home Assistant container |
 | `python tools/make_brand.py` | regenerate `brand/{icon,icon@2x,logo}.png` with the standard library |
+| `python tools/setup_tests.py --run` | build the test virtualenv and run the suite |
 
 ### Tests
 
-`tests/` holds 189 tests covering the cloud-response normalisation (mV, ×10, 0.1 kWh,
-the `"False"` string booleans), every entity's value function, the coordinator's slow-key
-cache, the config/reauth flows, and a full setup that asserts all 29 entity ids and the
-dongle→inverter device link.
+`tests/` holds 220 tests. Besides the read path (cloud-response normalisation — mV, ×10,
+0.1 kWh, the `"False"` string booleans — every entity's value function, the coordinator's
+slow-key cache, the config/reauth flows, and a full setup asserting every entity id and the
+dongle→inverter device link), the write path is covered by pressing the **actual Home
+Assistant services** (`switch.turn_on`, `button.press`, `luxcloud_ha.set_bit`) and asserting
+both the command sent to the cloud and the resulting entity state — including rejected writes,
+bad bit names, and the refusal to guess which inverter to write to when several are configured.
+
+The manifest and the config/service strings are verified through Home Assistant's own loader
+and translation helper, so a manifest or translation change that HA would reject fails the
+suite.
 
 ```bash
 python tools/setup_tests.py --run     # builds .venv, installs deps, runs pytest

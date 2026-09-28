@@ -7,9 +7,11 @@ endpoint datalog KHÔNG có key `success`, tháng trong dayMultiLine 0-based.
 """
 from __future__ import annotations
 
+import copy
 import sys
 
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
@@ -286,7 +288,12 @@ def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
             "remain_charge_s": 0,
             "remain_discharge_s": 0,
         },
-        "bits": {"FUNC_GRID_PEAK_SHAVING": True, "FUNC_RSD_DISABLE": False},
+        # Đo thật 2026-09-27: cả 20 bit nhóm HR[179] đều ĐANG TẮT.
+        "bits": {
+            "FUNC_GRID_PEAK_SHAVING": False,
+            "FUNC_GEN_PEAK_SHAVING": False,
+            "FUNC_ACTIVE_POWER_LIMIT_MODE": False,
+        },
         "green": {"co2_ton": 1.99, "coal_kg": 798.96, "trees": 110.63},
         "health": {
             "cloud_ok": True,
@@ -310,3 +317,100 @@ def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
             "2026": {"pv": 1974.0, "import": 900.0, "export": 200.0, "consumption": 1500.0}
         },
     }
+
+
+# ── Harness setup đầy đủ (dùng chung cho test_setup + test_write_path) ──
+
+
+class FakeLuxCloudApi:
+    """Thay `LuxCloudApi` khi setup — không gọi mạng, ghi lại mọi lệnh GHI.
+
+    Trạng thái "cloud" được giữ trong `self.data` và `set_config_bit` cập nhật nó,
+    mô phỏng việc cloud→dongle→inverter đã nhận lệnh: nhờ vậy test kiểm được cả
+    vòng "bấm switch → lần poll sau thấy giá trị mới".
+    """
+
+    instances: list["FakeLuxCloudApi"] = []
+    bit_write_result = True
+    quick_write_result = True
+
+    def __init__(self, session, base_url, account, password, serial) -> None:
+        self.base_url = base_url
+        self.account = account
+        self.serial = serial.upper()
+        self.plant_id = 123456
+        self.user_id = 42
+        self.data = copy.deepcopy(full_dataset())
+        self.fetch_calls: list[bool] = []
+        self.bit_writes: list[tuple[str, bool]] = []
+        self.quick_writes: list[tuple[str, str]] = []
+        FakeLuxCloudApi.instances.append(self)
+
+    @property
+    def last(self) -> "FakeLuxCloudApi":
+        return FakeLuxCloudApi.instances[-1]
+
+    async def login(self) -> bool:
+        return True
+
+    async def async_fetch_all(self, slow: bool, date_text: str) -> dict:
+        self.fetch_calls.append(slow)
+        return copy.deepcopy(self.data)
+
+    async def set_config_bit(self, function_param: str, enable: bool) -> bool:
+        self.bit_writes.append((function_param, enable))
+        if not FakeLuxCloudApi.bit_write_result:
+            return False
+        self.data.setdefault("bits", {})[function_param] = enable
+        return True
+
+    async def set_quick(self, action: str, op: str) -> bool:
+        self.quick_writes.append((action, op))
+        return FakeLuxCloudApi.quick_write_result
+
+
+@pytest.fixture
+def patched_api(monkeypatch):
+    """Thay API thật bằng `FakeLuxCloudApi` và reset trạng thái giữa các test."""
+    FakeLuxCloudApi.instances.clear()
+    FakeLuxCloudApi.bit_write_result = True
+    FakeLuxCloudApi.quick_write_result = True
+    monkeypatch.setattr("custom_components.luxcloud_ha.LuxCloudApi", FakeLuxCloudApi)
+    return FakeLuxCloudApi
+
+
+@pytest.fixture
+def no_write_settle(monkeypatch):
+    """Bỏ độ trễ cloud→dongle để test không phải chờ thật."""
+    monkeypatch.setattr("custom_components.luxcloud_ha.switch.CONFIG_WRITE_SETTLE", 0)
+    monkeypatch.setattr("custom_components.luxcloud_ha.button.CONFIG_WRITE_SETTLE", 0)
+
+
+def make_entry(serial: str = "61204F0266") -> MockConfigEntry:
+    from custom_components.luxcloud_ha import const
+
+    return MockConfigEntry(
+        domain=const.DOMAIN,
+        title=f"LuxCloud {serial}",
+        data={
+            const.CONF_ACCOUNT: "u@example.com",
+            const.CONF_PASSWORD: "pw",
+            const.CONF_SERIAL: serial,
+            const.CONF_REGION: "vn",
+        },
+        options={
+            const.CONF_SCAN_INTERVAL: 300,
+            const.CONF_ENABLE_SERIES: True,
+            const.CONF_ENABLE_FIRMWARE: True,
+        },
+        unique_id=serial,
+    )
+
+
+async def setup_luxcloud(hass, serial: str = "61204F0266") -> MockConfigEntry:
+    """Load entry như HA thật sự làm, rồi để mọi task chạy xong."""
+    entry = make_entry(serial)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry

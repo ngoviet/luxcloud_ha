@@ -20,6 +20,9 @@ import hass  # noqa: E402
 DOMAIN = "luxcloud_ha"
 TOOLS = pathlib.Path(__file__).parent
 
+# 23 sensor + 6 binary_sensor + 3 switch + 4 button = 36
+EXPECTED_ENTITIES = 36
+
 
 def main() -> int:
     for _ in range(30):
@@ -91,7 +94,7 @@ def main() -> int:
     for line in errors[:5]:
         print("   ", line.strip()[:190])
 
-    ok = bool(mine) and len(ents) == 29 and not errors
+    ok = bool(mine) and len(ents) == EXPECTED_ENTITIES and not errors
     print(f"\nKẾT LUẬN: {'ĐẠT' if ok else 'CẦN XEM LẠI'}")
     return 0 if ok else 1
 

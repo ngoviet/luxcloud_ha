@@ -42,5 +42,21 @@
         }
       }
     }
+  },
+  "services": {
+    "set_bit": {
+      "name": "Đặt bit cấu hình",
+      "description": "Bật/tắt một bit cấu hình HR[179] qua cloud LuxPower (remoteSet/functionControl) — đường GHI THẬT, giống app LuxCloud.",
+      "fields": {
+        "function": {
+          "name": "Tên bit",
+          "description": "Tên hàm theo cloud, ví dụ FUNC_GRID_PEAK_SHAVING."
+        },
+        "enable": {
+          "name": "Bật",
+          "description": "Bật (true) hoặc tắt (false) bit này."
+        }
+      }
+    }
   }
 }
