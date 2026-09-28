@@ -20,6 +20,9 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
+          # setup-python only auto-detects requirements.txt / pyproject.toml;
+          # ours is named requirements_test.txt, so point the cache key at it.
+          cache-dependency-path: requirements_test.txt
 
       - name: Install test dependencies
         run: |
