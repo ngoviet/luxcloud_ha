@@ -60,7 +60,7 @@ LuxPower cloud account are.
 
 | Requirement | Details |
 |---|---|
-| Home Assistant | 2026.9 or newer (verified on 2026.9.3) |
+| Home Assistant | 2026.9 or newer (verified on 2026.9.3 and, after the automatic update, on 2026.9.4) |
 | Python | 3.14 (shipped with that HA release) |
 | LuxPower account | The account you use in the LuxCloud app |
 | Inverter | LuxPower hybrid with a WiFi/LAN datalogger that is online |

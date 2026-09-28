@@ -43,7 +43,8 @@ def main() -> int:
 
     print("\n=== entity ===")
     _, states = hass.api("/api/states")
-    ents = sorted(s for s in states if s["entity_id"].split(".")[1].startswith("luxcloud"))
+    ents = sorted((s for s in states if s["entity_id"].split(".")[1].startswith("luxcloud")),
+                  key=lambda s: s["entity_id"])
     print(f"  tổng: {len(ents)}")
     cut = time.strftime("%Y-%m-%dT%H:%M", time.gmtime(time.time() - 900))
     fresh = [s for s in ents if s["last_updated"] > cut]
