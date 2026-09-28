@@ -301,7 +301,9 @@ class LuxCloudApi:
         rows = r.get("data") or []
         if not r.get("success") or not rows:
             return {}
-        step = max(1, len(rows) // DAY_CURVE_MAX_POINTS)
+        # Chia LÊN, không chia xuống: với 223 điểm/ngày, `len // 72` = 3 → 75 điểm,
+        # vượt giới hạn 16 KB/entity của HA. `-(-a // b)` cho ceil để luôn ≤ cap.
+        step = max(1, -(-len(rows) // DAY_CURVE_MAX_POINTS))
         points = []
         for x in rows[::step]:
             points.append(
