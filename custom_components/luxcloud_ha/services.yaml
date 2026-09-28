@@ -1,0 +1,23 @@
+set_bit:
+  name: Đặt bit cấu hình
+  description: >-
+    Bật/tắt một bit cấu hình HR[179] của inverter qua cloud LuxPower
+    (`remoteSet/functionControl`) — GIỐNG HỆT app LuxCloud, tức là ĐƯỜNG GHI THẬT.
+    Dùng cho các bit không có entity `switch` (xem tài liệu integration).
+  fields:
+    function:
+      name: Tên bit
+      description: >-
+        Tên hàm theo cloud, ví dụ FUNC_GRID_PEAK_SHAVING, FUNC_GEN_PEAK_SHAVING,
+        FUNC_ACTIVE_POWER_LIMIT_MODE.
+      required: true
+      example: FUNC_GRID_PEAK_SHAVING
+      selector:
+        text:
+    enable:
+      name: Bật
+      description: Bật (true) hoặc tắt (false) bit này.
+      required: true
+      default: false
+      selector:
+        boolean:

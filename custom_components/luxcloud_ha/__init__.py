@@ -1,14 +1,18 @@
-"""Setup integration LuxCloud (Phase 1 — chỉ đọc)."""
+"""Setup integration LuxCloud (Phase 2 — có đường GHI qua cloud)."""
 from __future__ import annotations
 
 import logging
+from typing import Any
+
+import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service import async_extract_config_entry_ids
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
 from .const import (
@@ -27,9 +31,82 @@ from .device import device_info
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.SWITCH,
+    Platform.BUTTON,
+]
 
 LuxCloudConfigEntry = ConfigEntry[LuxCloudCoordinator]
+
+SERVICE_SET_BIT = "set_bit"
+ATTR_FUNCTION = "function"
+ATTR_ENABLE = "enable"
+
+SET_BIT_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_FUNCTION): vol.All(str, vol.Match(r"^FUNC_[A-Z0-9_]+$")),
+        vol.Required(ATTR_ENABLE): vol.Coerce(bool),
+    },
+    # Cho phép các khoá target của HA (device_id/entity_id/area_id…) đi qua —
+    # đúng cách HA core làm cho service nhắm tới thiết bị; chúng được đọc bằng
+    # `async_extract_config_entry_ids`, không phải tham số của service.
+    extra=vol.ALLOW_EXTRA,
+)
+
+
+async def _async_entries_for_call(hass: HomeAssistant, call: ServiceCall) -> list:
+    """Entry mà service call nhắm tới.
+
+    Có target (device/entity/area) → các entry tương ứng. Không target → chỉ dùng
+    khi đúng MỘT inverter đang chạy; nhiều inverter mà không target thì báo lỗi
+    thay vì đoán bừa (ghi nhầm inverter là hỏng thật).
+    """
+    entry_ids = await async_extract_config_entry_ids(call)
+    if entry_ids:
+        entries = [
+            entry
+            for entry_id in entry_ids
+            if (entry := hass.config_entries.async_get_entry(entry_id)) is not None
+            and entry.domain == DOMAIN
+        ]
+        if entries:
+            return entries
+
+    entries = list(hass.config_entries.async_loaded_entries(DOMAIN))
+    if len(entries) == 1:
+        return entries
+    raise HomeAssistantError(
+        "Có nhiều inverter LuxCloud — hãy chọn thiết bị (target) cho service này."
+        if entries
+        else "Không có inverter LuxCloud nào đang chạy."
+    )
+
+
+async def _async_handle_set_bit(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Bật/tắt một bit cấu hình HR[179] qua cloud."""
+    function: str = call.data[ATTR_FUNCTION]
+    enable: bool = call.data[ATTR_ENABLE]
+    for entry in await _async_entries_for_call(hass, call):
+        coordinator: LuxCloudCoordinator = entry.runtime_data
+        if not await coordinator.api.set_config_bit(function, enable):
+            raise HomeAssistantError(
+                f"LuxCloud không đặt được {function} = {enable} trên {entry.title} (cloud từ chối)."
+            )
+        await coordinator.async_request_refresh()
+    _LOGGER.info("luxcloud: service set_bit %s=%s xong", function, enable)
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Đăng ký service `set_bit` (một lần cho cả domain)."""
+
+    async def _handle(call: ServiceCall) -> None:
+        await _async_handle_set_bit(hass, call)
+
+    hass.services.async_register(DOMAIN, SERVICE_SET_BIT, _handle, schema=SET_BIT_SCHEMA)
+    return True
+
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LuxCloudConfigEntry) -> bool:

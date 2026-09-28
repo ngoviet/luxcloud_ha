@@ -63,6 +63,22 @@ EP_DAY_CURVE = "/api/analyze/chart/dayMultiLine"
 EP_TOTAL_COLUMN = "/api/inverterChart/totalColumn"
 EP_REMOTE_READ = "/web/maintain/remoteRead/read"
 
+# ── Đường GHI (Phase 2) ────────────────────────────────────────
+# Bằng chứng APK 4.9.8 + đã đo thật:
+#   • remoteSet/functionControl  (Lv112KRemoteSetFragment.java:2809-2815)
+#         body {inverterSn, functionParam, enable, clientType=APP, remoteSetType=NORMAL}
+#   • web/config/quickCharge|quickDischarge/{start|stop}  (Lv1OverviewFragment.java:3166-3176)
+#         body {inverterSn, clientType=APP}
+EP_FUNCTION_CONTROL = "/web/maintain/remoteSet/functionControl"
+EP_QUICK_ACTION = "/web/config/{action}/{op}"   # action ∈ QUICK_ACTIONS, op ∈ QUICK_OPS
+
+REMOTE_SET_TYPE = "NORMAL"           # InvTool.STATUS_NORMAL
+
+QUICK_CHARGE = "quickCharge"
+QUICK_DISCHARGE = "quickDischarge"
+QUICK_ACTIONS = (QUICK_CHARGE, QUICK_DISCHARGE)
+QUICK_OPS = ("start", "stop")
+
 # Danh mục firmware theo loại thiết bị (tham số CHÍNH XÁC học từ APK:
 # platform = Custom.APP_PLATFORM = LUX_POWER; versionCode = "V"+versionName)
 FIRMWARE_BASE = {
@@ -73,7 +89,7 @@ FIRMWARE_BASE = {
 }
 FIRMWARE_TYPES = ("SNA3_6K_EU", "SNA_3000_6000", "LXP_LB_8_12K")
 
-# Bit nhóm HR[179] đọc qua remoteRead (Phase 1: chỉ ĐỌC)
+# Bit nhóm HR[179] đọc qua remoteRead; ghi qua remoteSet/functionControl.
 CONFIG_BIT_BLOCK = 160
 CONFIG_BIT_KEYS = (
     "FUNC_GRID_PEAK_SHAVING",
@@ -89,6 +105,21 @@ CONFIG_BIT_KEYS = (
     "FUNC_TOTAL_LOAD_COMPENSATION_EN",
     "FUNC_RSD_DISABLE",
 )
+
+# ⚠️ CHỈ 3 bit này được tạo entity `switch`. Cả 3 đều thuộc HR[179] — nhóm mà
+# `lxp_modbus` (Modbus local) KHÔNG expose. Các bit còn lại trong CONFIG_BIT_KEYS
+# trùng chức năng với entity local đã có (charge_last, green_mode, smart_load,
+# CT direction…) nên CỐ Ý không tạo switch: hai nguồn ghi cùng một cấu hình sẽ
+# đá nhau. Vẫn đặt được bằng service `luxcloud_ha.set_bit` khi thật cần.
+SWITCH_BIT_KEYS = (
+    "FUNC_GRID_PEAK_SHAVING",
+    "FUNC_GEN_PEAK_SHAVING",
+    "FUNC_ACTIVE_POWER_LIMIT_MODE",
+)
+
+# Giây đợi cloud→dongle sau khi ghi bit, trước khi đọc lại (giống `delay: 3s`
+# của script cũ). Đặt 0 trong test để khỏi chờ thật.
+CONFIG_WRITE_SETTLE = 2.0
 
 DAY_CURVE_MAX_POINTS = 72            # attribute `points` gọn (giới hạn 16 KB/entity của HA)
 

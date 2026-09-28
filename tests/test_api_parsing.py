@@ -660,3 +660,87 @@ def test_refresh_input_false_when_cryptography_is_unavailable() -> None:
         assert run(client.refresh_input()) is False
     finally:
         api_module._AES_OK = original
+
+
+# ── đường GHI: bit cấu hình ────────────────────────────────────
+
+
+def test_set_config_bit_sends_the_app_payload() -> None:
+    """Body phải khớp APK: `enable` là CHUỖI, có clientType + remoteSetType."""
+    api = make_api()
+    calls = patch_post(api, route({const.EP_FUNCTION_CONTROL: {"success": True}}))
+
+    assert run(api.set_config_bit("FUNC_GRID_PEAK_SHAVING", True)) is True
+
+    endpoint, params, _base = calls[0]
+    assert endpoint == const.EP_FUNCTION_CONTROL
+    assert params == {
+        "inverterSn": "61204F0266",
+        "functionParam": "FUNC_GRID_PEAK_SHAVING",
+        "enable": "true",
+        "clientType": "APP",
+        "remoteSetType": const.REMOTE_SET_TYPE,
+    }
+
+
+@pytest.mark.parametrize(
+    ("enable", "expected"), [(True, "true"), (False, "false")]
+)
+def test_set_config_bit_sends_enable_as_a_string(enable: bool, expected: str) -> None:
+    api = make_api()
+    calls = patch_post(api, route({const.EP_FUNCTION_CONTROL: {"success": True}}))
+    run(api.set_config_bit("FUNC_RSD_DISABLE", enable))
+    assert calls[0][1]["enable"] == expected
+    assert isinstance(calls[0][1]["enable"], str)
+
+
+def test_set_config_bit_returns_false_when_cloud_rejects() -> None:
+    api = make_api()
+    patch_post(api, route({const.EP_FUNCTION_CONTROL: {"success": False, "msg": "không hỗ trợ"}}))
+    assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is False
+
+
+def test_set_config_bit_returns_false_without_a_response() -> None:
+    api = make_api()
+    patch_post(api, route({const.EP_FUNCTION_CONTROL: None}))
+    assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is False
+
+
+# ── đường GHI: quick charge / discharge ────────────────────────
+
+
+@pytest.mark.parametrize("action", const.QUICK_ACTIONS)
+@pytest.mark.parametrize("op", const.QUICK_OPS)
+def test_set_quick_builds_the_endpoint_from_action_and_op(action: str, op: str) -> None:
+    api = make_api()
+    calls = patch_post(api, route({f"/web/config/{action}/{op}": {"success": True}}))
+
+    assert run(api.set_quick(action, op)) is True
+
+    endpoint, params, _base = calls[0]
+    assert endpoint == f"/web/config/{action}/{op}"
+    assert params == {"inverterSn": "61204F0266", "clientType": "APP"}
+
+
+def test_set_quick_returns_false_when_cloud_rejects() -> None:
+    api = make_api()
+    patch_post(api, route({"/web/config/quickCharge/start": {"success": False, "msg": "bận"}}))
+    assert run(api.set_quick(const.QUICK_CHARGE, "start")) is False
+
+
+@pytest.mark.parametrize(
+    ("action", "op"),
+    [("quickFoo", "start"), (const.QUICK_CHARGE, "pause"), ("", ""), ("quickCharge", "stopX")],
+)
+def test_set_quick_rejects_unknown_commands_without_calling_the_cloud(
+    action: str, op: str
+) -> None:
+    """Lệnh lạ không được biến thành URL tuỳ ý gửi lên cloud."""
+    api = make_api()
+    calls = patch_post(api, route({}))
+
+    with pytest.raises(ValueError):
+        run(api.set_quick(action, op))
+
+    assert calls == []
+
