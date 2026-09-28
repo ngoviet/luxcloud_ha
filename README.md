@@ -199,6 +199,25 @@ type first.
 **Settings → Devices & Services → LuxCloud → ⋮ → Delete.** Entities and both devices are
 removed; your account and the inverter settings are untouched.
 
+## Development
+
+All tooling runs from the repository root and needs no third-party packages beyond
+`paramiko` (SSH deploy) and Node 22+ (WebSocket helper):
+
+| Command | Purpose |
+|---|---|
+| `python tools/deploy_to_ha.py --restart` | push `custom_components/luxcloud_ha/` to a Home Assistant host over SSH, verify every file by md5, then restart and wait for it to come back |
+| `python tools/verify_live.py` | acceptance check: config entry, all 29 entities, the inverter↔dongle device link, and the count of deprecation/error lines **after the last boot only** |
+| `python tools/hass.py cfgcheck` | run `check_config` inside the Home Assistant container |
+| `python tools/make_brand.py` | regenerate `brand/{icon,icon@2x,logo}.png` with the standard library |
+
+Copy `.env.example` to `.env` and fill in the host, SSH password and a long-lived access
+token. `.env` is git-ignored.
+
+Two Home Assistant deprecations are already handled here and will stop working in **2027.8**
+if they regress: `via_device_id` instead of `via_device`, and `async_get_device_id_by_identifier`
+instead of `DeviceRegistry.async_get_device`.
+
 ## License
 
 [MIT](LICENSE) © 2026 ngoviet

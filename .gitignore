@@ -38,6 +38,11 @@ brands_prep/
 .codegraph/
 .mcp.json
 
+# Internal working guide — deliberate local-only (same convention as the
+# smartsolar-ha repo). Public documentation for users is README.md.
+CLAUDE.md
+wiki/
+
 # Generated art that should not be published...
 Generated Image*.png
 *.psd
