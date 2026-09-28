@@ -2,6 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub release](https://img.shields.io/github/release/ngoviet/luxcloud_ha.svg)](https://github.com/ngoviet/luxcloud_ha/releases)
+[![Test](https://github.com/ngoviet/luxcloud_ha/actions/workflows/test.yml/badge.svg)](https://github.com/ngoviet/luxcloud_ha/actions/workflows/test.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5)](https://www.home-assistant.io)
 [![Python](https://img.shields.io/badge/python-3.14%2B-blue)](https://www.python.org)
@@ -72,7 +73,7 @@ LuxPower cloud account are.
 ### HACS (custom repository)
 
 1. HACS → **⋮ → Custom repositories**
-2. Add `https://github.com/ngoviet/luxcloud-ha` with category **Integration**
+2. Add `https://github.com/ngoviet/luxcloud_ha` with category **Integration**
 3. Search for **LuxCloud**, install it
 4. Restart Home Assistant
 
@@ -210,6 +211,27 @@ All tooling runs from the repository root and needs no third-party packages beyo
 | `python tools/verify_live.py` | acceptance check: config entry, all 29 entities, the inverter↔dongle device link, and the count of deprecation/error lines **after the last boot only** |
 | `python tools/hass.py cfgcheck` | run `check_config` inside the Home Assistant container |
 | `python tools/make_brand.py` | regenerate `brand/{icon,icon@2x,logo}.png` with the standard library |
+
+### Tests
+
+`tests/` holds 189 tests covering the cloud-response normalisation (mV, ×10, 0.1 kWh,
+the `"False"` string booleans), every entity's value function, the coordinator's slow-key
+cache, the config/reauth flows, and a full setup that asserts all 29 entity ids and the
+dongle→inverter device link.
+
+```bash
+python tools/setup_tests.py --run     # builds .venv, installs deps, runs pytest
+```
+
+`requirements_test.txt` pins `pytest-homeassistant-custom-component`, which pins
+`homeassistant` to an exact version (0.13.367 → 2026.9.4) — bump that one line to move
+the suite to a new HA release.
+
+> **Windows.** Home Assistant's test harness imports the POSIX-only `fcntl` and `resource`
+> modules, and blocks sockets in a way Windows' asyncio event loop cannot work around.
+> `tools/setup_tests.py` drops small stubs into `.venv` (from `tools/win32_stubs/`) and
+> `tests/conftest.py` relaxes the socket guard — **both only when running on Windows**.
+> On Linux nothing is relaxed and the tests still cannot open a real socket.
 
 Copy `.env.example` to `.env` and fill in the host, SSH password and a long-lived access
 token. `.env` is git-ignored.

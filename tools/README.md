@@ -10,6 +10,8 @@ repo (gitignored) hoặc biến môi trường. Nếu thiếu, script tự lùi 
 | `verify_live.py` | Nghiệm thu sau deploy: config entry, 29 entity, quan hệ device (`via_device_id`), đếm cảnh báo deprecate/ERROR **chỉ sau lần boot cuối** | `python tools/verify_live.py` |
 | `ws.js` | WebSocket client chung (device/entity registry, lovelace…) — Node ≥ 22, không cần `node_modules` | `node tools/ws.js cmds.json luxcloud` |
 | `make_brand.py` | Sinh `brand/{icon,icon@2x,logo}.png` bằng stdlib (máy không có PIL) | `python tools/make_brand.py` |
+| `setup_tests.py` | Dựng `.venv` để chạy `tests/` (cài `requirements_test.txt`, đặt stub POSIX trên Windows); `--run` để chạy pytest luôn | `python tools/setup_tests.py --run` |
+| `win32_stubs/` | Stub `fcntl.py` + `resource.py` cho Windows — `setup_tests.py` copy vào `site-packages` của `.venv`, **không** dùng trên Linux | (tự động) |
 
 ## `.env` cần gì
 
