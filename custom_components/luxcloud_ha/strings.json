@@ -1,0 +1,46 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LuxCloud (LuxPower Cloud API)",
+        "description": "Nhập tài khoản app LuxCloud (WManage). Thông tin chỉ dùng để đăng nhập cloud, không lưu ở đâu khác.",
+        "data": {
+          "account": "Tài khoản",
+          "password": "Mật khẩu",
+          "serial": "Serial inverter (vd 61204F0266)",
+          "region": "Khu vực cloud",
+          "scan_interval": "Chu kỳ lấy dữ liệu (giây)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Đăng nhập lại LuxCloud",
+        "data": {
+          "account": "Tài khoản",
+          "password": "Mật khẩu"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Sai tài khoản hoặc mật khẩu",
+      "cannot_connect": "Không kết nối được cloud LuxPower",
+      "no_device": "Đăng nhập được nhưng không thấy inverter nào với serial này",
+      "unknown": "Lỗi không xác định"
+    },
+    "abort": {
+      "already_configured": "Serial này đã được cấu hình",
+      "reauth_successful": "Đăng nhập lại thành công"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Tuỳ chọn LuxCloud",
+        "data": {
+          "scan_interval": "Chu kỳ lấy dữ liệu (giây)",
+          "enable_series": "Lấy chuỗi công suất hôm nay + tổng theo năm (~30 phút/lần)",
+          "enable_firmware": "Kiểm tra firmware mới (~30 phút/lần)"
+        }
+      }
+    }
+  }
+}

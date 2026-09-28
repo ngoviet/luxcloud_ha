@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs / artifacts
+*.log
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets — HA_HOST / HA_USER / HA_PASS / HA_TOKEN live here
+.env
+
+# Local deploy backups + scratch scripts
+_local_archive/
+temp_brands/
+brands_prep/
+
+# Local AI/tooling state
+.claude/
+.lavish/
+.codegraph/
+.mcp.json
+
+# Generated art that should not be published...
+Generated Image*.png
+*.psd
+
+# ...but Home Assistant serves the integration's own brand images from
+# custom_components/<domain>/brand/, so those files must stay tracked.
+!custom_components/luxcloud_ha/brand/icon.png
+!custom_components/luxcloud_ha/brand/icon@2x.png
+!custom_components/luxcloud_ha/brand/logo.png

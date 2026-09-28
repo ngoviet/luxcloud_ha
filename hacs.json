@@ -1,0 +1,8 @@
+{
+    "name": "LuxCloud (LuxPower Cloud API)",
+    "content_in_root": false,
+    "country": "VN",
+    "homeassistant": "2026.9.0",
+    "render_readme": true,
+    "zip_release": false
+}

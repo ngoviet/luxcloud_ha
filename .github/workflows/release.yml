@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # HACS picks up the version from manifest.json; a tag that disagrees with it
+      # silently offers users the wrong version, so fail the release instead.
+      - name: Validate manifest version matches tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          MANIFEST_VER=$(python -c "import json; print(json.load(open('custom_components/luxcloud_ha/manifest.json'))['version'])")
+          if [ "$TAG" != "$MANIFEST_VER" ]; then
+            echo "Tag version v$TAG does not match manifest version $MANIFEST_VER"
+            exit 1
+          fi
+          echo "Version $TAG validated"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
