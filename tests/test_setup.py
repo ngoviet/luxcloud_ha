@@ -12,6 +12,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.luxcloud_ha import const
+from custom_components.luxcloud_ha.switch import SWITCHES
 from tests.conftest import setup_luxcloud
 
 EXPECTED_ENTITY_IDS = {
@@ -90,7 +91,11 @@ async def test_switch_entities_are_exactly_the_non_overlapping_bits(hass, patche
         "switch.luxcloud_gen_peak_shaving",
         "switch.luxcloud_active_power_limit_mode",
     }
-    assert len(const.SWITCH_BIT_KEYS) == len(switches)
+    assert {desc.function_param for desc in SWITCHES} == {
+        "FUNC_GRID_PEAK_SHAVING",
+        "FUNC_GEN_PEAK_SHAVING",
+        "FUNC_ACTIVE_POWER_LIMIT_MODE",
+    }
 
 
 async def _refresh_coordinator(hass, api) -> None:
