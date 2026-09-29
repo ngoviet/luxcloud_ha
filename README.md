@@ -246,7 +246,13 @@ a state — so a stale `off` is never mistaken for a real one.
 |---|---|---|
 | 1 | Read-only: health, faults, BMS, power, energy, firmware, day curve, totals, config bits | ✅ shipped as `v1.0.0` |
 | 2 | `switch` for HR[179] config bits, `button`s for quick charge/discharge, `set_bit` service | ✅ shipped |
-| 3 | Options polish, more translations, HACS default submission | ⏳ planned |
+| 3 | Options polish, more translations | ⏳ planned |
+
+Submitting to the HACS default store is deliberately **not** planned: this integration talks to
+an unofficial, reverse-engineered cloud API, so a default-store listing would imply a stability
+promise it cannot keep, and it is a companion to a local Modbus integration rather than a
+replacement, so its audience is narrower than a default listing suggests. This costs you
+nothing — installing and updating it as a HACS custom repository is the same code path.
 
 Writes stay deliberately narrow: only the settings the cloud owns, and only bits a local Modbus
 integration does not already control.
