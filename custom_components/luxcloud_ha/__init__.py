@@ -7,7 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
@@ -74,6 +74,7 @@ async def _async_entries_for_call(hass: HomeAssistant, call: ServiceCall) -> lis
         for entry_id in entry_ids
         if (entry := hass.config_entries.async_get_entry(entry_id)) is not None
         and entry.domain == DOMAIN
+        and entry.state is ConfigEntryState.LOADED
     ]
     if entries:
         return entries
