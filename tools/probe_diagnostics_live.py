@@ -55,6 +55,7 @@ def main() -> int:
         blob = json.dumps(payload, ensure_ascii=False)
         our = payload.get("data") or {}
         cloud = our.get("data") or {}
+        our_blob = json.dumps(our, ensure_ascii=False)
 
         # Giá trị nhận dạng lấy từ chính dữ liệu, không hardcode.
         serials = {
@@ -64,13 +65,13 @@ def main() -> int:
         serials = {s for s in serials if s and s != "**REDACTED**"}
 
         print(f"  kích thước file      : {len(blob)} ký tự")
-        print(f"  giá trị đã che       : {blob.count('**REDACTED**')}")
+        print(f"  giá trị đã che       : {our_blob.count('**REDACTED**')}")
 
         leaks = []
         for needle in sorted(serials):
-            if needle in blob:
+            if needle in our_blob:
                 leaks.append(f"serial {needle!r}")
-        if "@" in blob:
+        if "@" in our_blob:
             leaks.append("ký tự '@' (email tài khoản)")
 
         for label in leaks:
@@ -84,7 +85,7 @@ def main() -> int:
         if not useful:
             print("  !! mất dữ liệu chẩn đoán — che quá tay?")
 
-        redacted = blob.count("**REDACTED**")
+        redacted = our_blob.count("**REDACTED**")
         if leaks or not useful or redacted < 3:
             exit_code = 1
 
