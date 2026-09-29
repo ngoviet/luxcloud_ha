@@ -384,6 +384,7 @@ def no_write_settle(monkeypatch):
     """Bỏ độ trễ cloud→dongle để test không phải chờ thật."""
     monkeypatch.setattr("custom_components.luxcloud_ha.switch.CONFIG_WRITE_SETTLE", 0)
     monkeypatch.setattr("custom_components.luxcloud_ha.button.CONFIG_WRITE_SETTLE", 0)
+    monkeypatch.setattr("custom_components.luxcloud_ha.CONFIG_WRITE_SETTLE", 0)
 
 
 def make_entry(serial: str = "61204F0266") -> MockConfigEntry:

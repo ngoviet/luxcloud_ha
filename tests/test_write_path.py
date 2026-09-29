@@ -6,6 +6,8 @@ thái entity sau đó. Không test nào đọc source code.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 import voluptuous as vol
 from homeassistant.exceptions import HomeAssistantError
@@ -237,6 +239,46 @@ async def test_set_bit_service_asks_the_coordinator_to_refresh(
     await _call(hass, DOMAIN, SERVICE_SET_BIT, {"function": "FUNC_RSD_DISABLE", "enable": True})
 
     assert len(api.fetch_calls) > before
+
+
+async def test_set_bit_service_waits_for_write_settle_before_refresh(
+    hass, patched_api, monkeypatch
+) -> None:
+    """Ghi xong phải đợi cloud→dongle (CONFIG_WRITE_SETTLE) rồi mới poll lại."""
+    await setup_luxcloud(hass)
+    real_sleep = asyncio.sleep
+    delays: list[float] = []
+
+    async def recording_sleep(delay: float, *args, **kwargs) -> None:
+        delays.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr("custom_components.luxcloud_ha.asyncio.sleep", recording_sleep)
+    monkeypatch.setattr("custom_components.luxcloud_ha.CONFIG_WRITE_SETTLE", 1.5)
+
+    await _call(hass, DOMAIN, SERVICE_SET_BIT, {"function": "FUNC_RSD_DISABLE", "enable": True})
+
+    assert [d for d in delays if d] == [1.5]
+
+
+async def test_set_bit_service_skips_wait_when_settle_is_zero(
+    hass, patched_api, monkeypatch
+) -> None:
+    """CONFIG_WRITE_SETTLE = 0 ⇒ không đợi, poll lại ngay."""
+    await setup_luxcloud(hass)
+    real_sleep = asyncio.sleep
+    delays: list[float] = []
+
+    async def recording_sleep(delay: float, *args, **kwargs) -> None:
+        delays.append(delay)
+        await real_sleep(0)
+
+    monkeypatch.setattr("custom_components.luxcloud_ha.asyncio.sleep", recording_sleep)
+    monkeypatch.setattr("custom_components.luxcloud_ha.CONFIG_WRITE_SETTLE", 0)
+
+    await _call(hass, DOMAIN, SERVICE_SET_BIT, {"function": "FUNC_RSD_DISABLE", "enable": True})
+
+    assert [d for d in delays if d] == []
 
 
 async def test_set_bit_service_reports_a_rejected_write(
