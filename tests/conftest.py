@@ -247,8 +247,21 @@ def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
             "model": "6.5kW",
             "battery_type": "Lithium",
         },
-        "runtime": {"pinv": 1095, "prec": 0, "isOffGrid": False, "fwCode": "CHAA-000303"},
-        "energy": {"hasTodayData": True, "fwCode": "CHAA-000303"},
+        # `serialNum` là field THẬT của cloud (đo trên payload sống) — có mặt trong
+        # CẢ runtime lẫn energy. Phải giữ trong fixture, nếu không test diagnostics
+        # sẽ mù đúng cái leak đã xảy ra thật.
+        "runtime": {
+            "pinv": 1095,
+            "prec": 0,
+            "isOffGrid": False,
+            "fwCode": "CHAA-000303",
+            "serialNum": "61204F0266",
+        },
+        "energy": {
+            "hasTodayData": True,
+            "fwCode": "CHAA-000303",
+            "serialNum": "61204F0266",
+        },
         "dongle": {
             "sn": "DU61242846",
             "lost": lost == "True",
@@ -333,6 +346,7 @@ class FakeLuxCloudApi:
     instances: list["FakeLuxCloudApi"] = []
     bit_write_result = True
     quick_write_result = True
+    fetch_error: Exception | None = None
 
     def __init__(self, session, base_url, account, password, serial) -> None:
         self.base_url = base_url
@@ -355,6 +369,8 @@ class FakeLuxCloudApi:
 
     async def async_fetch_all(self, slow: bool, date_text: str) -> dict:
         self.fetch_calls.append(slow)
+        if FakeLuxCloudApi.fetch_error is not None:
+            raise FakeLuxCloudApi.fetch_error
         return copy.deepcopy(self.data)
 
     async def set_config_bit(self, function_param: str, enable: bool) -> bool:
@@ -375,6 +391,7 @@ def patched_api(monkeypatch):
     FakeLuxCloudApi.instances.clear()
     FakeLuxCloudApi.bit_write_result = True
     FakeLuxCloudApi.quick_write_result = True
+    FakeLuxCloudApi.fetch_error = None
     monkeypatch.setattr("custom_components.luxcloud_ha.LuxCloudApi", FakeLuxCloudApi)
     return FakeLuxCloudApi
 
@@ -387,6 +404,12 @@ def no_write_settle(monkeypatch):
     monkeypatch.setattr("custom_components.luxcloud_ha.CONFIG_WRITE_SETTLE", 0)
 
 
+# Giá trị nhận dạng được (không phải "pw" ngắn dễ trùng) để test diagnostics
+# quét được cả CHUỖI trong output, không chỉ kiểm tên khoá.
+TEST_ACCOUNT = "diagnostics-user@example.com"
+TEST_PASSWORD = "pw-distinctive-9f3a"
+
+
 def make_entry(serial: str = "61204F0266") -> MockConfigEntry:
     from custom_components.luxcloud_ha import const
 
@@ -394,8 +417,8 @@ def make_entry(serial: str = "61204F0266") -> MockConfigEntry:
         domain=const.DOMAIN,
         title=f"LuxCloud {serial}",
         data={
-            const.CONF_ACCOUNT: "u@example.com",
-            const.CONF_PASSWORD: "pw",
+            const.CONF_ACCOUNT: TEST_ACCOUNT,
+            const.CONF_PASSWORD: TEST_PASSWORD,
             const.CONF_SERIAL: serial,
             const.CONF_REGION: "vn",
         },

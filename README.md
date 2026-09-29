@@ -54,7 +54,10 @@ LuxPower cloud account are.
   every 6th poll (~30 min), so the fast path stays cheap.
 - **Writes only what the cloud owns** — 3 `switch` entities plus quick charge/discharge
   `button`s and a `set_bit` service. See [Writing to the inverter](#writing-to-the-inverter).
-- **Diagnostics support** — download a redacted config dump from the UI.
+- **Diagnostics support** — download a config dump from the UI with the account, password,
+  serial numbers and plant name replaced by `**REDACTED**`, so the file is safe to attach to
+  an issue. Raw readings, bit states and firmware codes are kept, because that is what makes
+  the dump useful.
 - **No third-party dependencies** — stdlib plus Home Assistant itself (`requirements: []`).
 - **Real fault text** — the cloud returns already-localised fault strings (Vietnamese here),
   no client-side translation table to maintain.
@@ -266,7 +269,7 @@ All tooling runs from the repository root and needs no third-party packages beyo
 
 ### Tests
 
-`tests/` holds 229 tests. Besides the read path (cloud-response normalisation — mV, ×10,
+`tests/` holds 255 tests. Besides the read path (cloud-response normalisation — mV, ×10,
 0.1 kWh, the `"False"` string booleans — every entity's value function, the coordinator's
 slow-key cache, the config/reauth flows, and a full setup asserting every entity id and the
 dongle→inverter device link), the write path is covered by pressing the **actual Home
@@ -274,9 +277,20 @@ Assistant services** (`switch.turn_on`, `button.press`, `luxcloud_ha.set_bit`) a
 both the command sent to the cloud and the resulting entity state — including rejected writes,
 bad bit names, and the refusal to guess which inverter to write to when several are configured.
 
+Three areas have their own files because they are easy to get subtly wrong:
+
+- **`test_diagnostics.py`** serialises the diagnostics payload and scans it for the password,
+  account e-mail, serial numbers and plant name, so a future field cannot quietly leak them.
+  It also asserts the dump still carries the readings needed to debug.
+- **`test_options_flow.py`** drives the real options flow and checks the entry actually reloads
+  and the coordinator picks up the new interval — not just that the schema accepts a number.
+- **`test_availability.py`** checks that entities go `unavailable` when the cloud fails
+  (rather than silently keeping the last reading), recover afterwards, and that an auth failure
+  starts a reauth flow.
+
 The manifest and the config/service strings are verified through Home Assistant's own loader
-and translation helper, so a manifest or translation change that HA would reject fails the
-suite.
+and translation helper — including the bronze `config-flow` rule that every field carries a
+`data_description`, checked against the flow's real schema rather than a hardcoded list.
 
 ```bash
 python tools/setup_tests.py --run     # builds .venv, installs deps, runs pytest
@@ -298,6 +312,31 @@ token. `.env` is git-ignored.
 Two Home Assistant deprecations are already handled here and will stop working in **2027.8**
 if they regress: `via_device_id` instead of `via_device`, and `async_get_device_id_by_identifier`
 instead of `DeviceRegistry.async_get_device`.
+
+### Quality scale
+
+`manifest.json` declares `quality_scale: bronze`, and the [Bronze rules][qs-checklist] were
+audited against the code rather than assumed:
+
+| Rule | Where |
+|---|---|
+| `action-setup` | service registered in `async_setup` |
+| `appropriate-polling` | scan interval configurable 60–3600 s |
+| `brands` | `custom_components/luxcloud_ha/brand/` |
+| `config-flow` (+ `data_description`) | every field described; enforced by a test against the flow's real schema |
+| `config-flow-test-coverage` | `tests/test_config_flow.py` |
+| `dependency-transparency` | `requirements: []` — stdlib plus HA only |
+| `docs-*` | this README (actions, description, install, removal, limitations) |
+| `entity-unique-id`, `has-entity-name` | asserted in `tests/test_setup.py` |
+| `runtime-data` | `entry.runtime_data` |
+| `test-before-configure`, `test-before-setup` | login probed in the config flow; `ConfigEntryNotReady`/`ConfigEntryAuthFailed` on setup |
+| `unique-config-entry` | `async_set_unique_id` + `_abort_if_unique_id_configured` |
+
+`docs-triggers` and `docs-conditions` do not apply — this integration registers neither.
+Home Assistant reports `quality_scale: custom` for any non-core integration, so the manifest
+value is documentation for readers and HACS, not something HA enforces.
+
+[qs-checklist]: https://developers.home-assistant.io/docs/core/integration-quality-scale/checklist/
 
 ## License
 

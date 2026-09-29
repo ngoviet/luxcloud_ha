@@ -57,3 +57,64 @@ async def test_ha_exposes_the_service_translations(hass) -> None:
     assert any(key.endswith("set_bit.name") for key in strings), sorted(strings)
     assert any(key.endswith("set_bit.fields.function.name") for key in strings), sorted(strings)
     assert any(key.endswith("set_bit.fields.enable.name") for key in strings), sorted(strings)
+
+
+def _field_names(schema) -> set[str]:
+    """Tên field từ schema THẬT của flow (không hardcode)."""
+    names = set()
+    for key in schema.schema:
+        name = getattr(key, "schema", key)
+        if isinstance(name, str):
+            names.add(name)
+    return names
+
+
+async def test_every_config_field_is_labelled_and_described(hass) -> None:
+    """Rule bronze `config-flow`: field phải có cả nhãn và `data_description`.
+
+    Lấy field từ schema thật, đối chiếu với chuỗi mà HA thật sự load — nên thêm
+    field mới mà quên mô tả là test đỏ, không cần ai nhớ.
+    """
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    fields = _field_names(result["data_schema"])
+    assert fields == {"account", "password", "serial", "region", "scan_interval"}
+
+    strings = await async_get_translations(hass, "en", "config", {DOMAIN})
+    for field in fields:
+        assert any(key.endswith(f"data.{field}") for key in strings), f"thiếu nhãn: {field}"
+        assert any(key.endswith(f"data_description.{field}") for key in strings), (
+            f"thiếu data_description cho '{field}' — rule bronze 'config-flow'"
+        )
+
+
+async def test_reauth_fields_are_labelled_and_described(hass, patched_api) -> None:
+    from tests.conftest import setup_luxcloud
+
+    entry = await setup_luxcloud(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "reauth", "entry_id": entry.entry_id}
+    )
+    fields = _field_names(result["data_schema"])
+    assert fields == {"account", "password"}
+
+    strings = await async_get_translations(hass, "en", "config", {DOMAIN})
+    for field in fields:
+        assert any(key.endswith(f"data_description.{field}") for key in strings), field
+
+
+async def test_every_options_field_is_labelled_and_described(hass, patched_api) -> None:
+    """Chuỗi của options flow nằm ở category `options`, không phải `config`."""
+    from tests.conftest import setup_luxcloud
+
+    entry = await setup_luxcloud(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fields = _field_names(result["data_schema"])
+    assert fields == {"scan_interval", "enable_series", "enable_firmware"}
+
+    strings = await async_get_translations(hass, "en", "options", {DOMAIN})
+    assert strings, "HA không đọc được chuỗi tuỳ chọn nào"
+    for field in fields:
+        assert any(key.endswith(f"data.{field}") for key in strings), f"thiếu nhãn: {field}"
+        assert any(key.endswith(f"data_description.{field}") for key in strings), (
+            f"thiếu data_description cho tuỳ chọn '{field}'"
+        )

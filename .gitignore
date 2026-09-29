@@ -54,3 +54,6 @@ Generated Image*.png
 !custom_components/luxcloud_ha/brand/icon.png
 !custom_components/luxcloud_ha/brand/icon@2x.png
 !custom_components/luxcloud_ha/brand/logo.png
+
+# Scratch output from local test runs
+.pytest_out.txt

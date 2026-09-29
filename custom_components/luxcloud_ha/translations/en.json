@@ -10,6 +10,13 @@
           "serial": "Serial inverter (vd 61204F0266)",
           "region": "Khu vực cloud",
           "scan_interval": "Chu kỳ lấy dữ liệu (giây)"
+        },
+        "data_description": {
+          "account": "Email bạn dùng để đăng nhập app LuxCloud.",
+          "password": "Mật khẩu tài khoản LuxPower. Chỉ dùng để đăng nhập cloud.",
+          "serial": "Serial inverter, xem trong app ở Device → Info.",
+          "region": "Host cloud gần bạn nhất; chọn sai vùng thường bị lỗi kết nối.",
+          "scan_interval": "Số giây giữa hai lần lấy dữ liệu, từ 60 đến 3600."
         }
       },
       "reauth_confirm": {
@@ -17,6 +24,10 @@
         "data": {
           "account": "Tài khoản",
           "password": "Mật khẩu"
+        },
+        "data_description": {
+          "account": "Email đăng nhập cloud (giữ nguyên như lúc cài đặt).",
+          "password": "Mật khẩu mới cho tài khoản này."
         }
       }
     },
@@ -39,6 +50,11 @@
           "scan_interval": "Chu kỳ lấy dữ liệu (giây)",
           "enable_series": "Lấy chuỗi công suất hôm nay + tổng theo năm (~30 phút/lần)",
           "enable_firmware": "Kiểm tra firmware mới (~30 phút/lần)"
+        },
+        "data_description": {
+          "scan_interval": "Số giây giữa hai lần lấy dữ liệu, từ 60 đến 3600. Tăng lên nếu hay bị lỗi đăng nhập khi app đang mở.",
+          "enable_series": "Tắt để bớt tải: chuỗi công suất trong ngày và tổng sản lượng theo năm.",
+          "enable_firmware": "Tắt nếu không cần cảnh báo firmware mới."
         }
       }
     }
