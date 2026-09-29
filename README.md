@@ -53,11 +53,15 @@ LuxPower cloud account are.
 - **Slow-key scheduling** — firmware catalogue, intraday curve and yearly totals are fetched
   every 6th poll (~30 min), so the fast path stays cheap.
 - **Writes only what the cloud owns** — 3 `switch` entities plus quick charge/discharge
-  `button`s and a `set_bit` service. See [Writing to the inverter](#writing-to-the-inverter).
+  `button`s and a `set_bit` service. Writes are serialised, so two commands fired at the same
+  moment reach the cloud in the order you asked for them.
+  See [Writing to the inverter](#writing-to-the-inverter).
 - **Diagnostics support** — download a config dump from the UI with the account, password,
   serial numbers and plant name replaced by `**REDACTED**`, so the file is safe to attach to
   an issue. Raw readings, bit states and firmware codes are kept, because that is what makes
-  the dump useful.
+  the dump useful. It also reports the coordinator state — when the last successful poll was,
+  the last error, and how many polls have failed in a row — which tells a flaky cloud apart
+  from a broken setup without digging through logs.
 - **No third-party dependencies** — stdlib plus Home Assistant itself (`requirements: []`).
 - **Real fault text** — the cloud returns already-localised fault strings (Vietnamese here),
   no client-side translation table to maintain.
@@ -269,7 +273,7 @@ All tooling runs from the repository root and needs no third-party packages beyo
 
 ### Tests
 
-`tests/` holds 255 tests. Besides the read path (cloud-response normalisation — mV, ×10,
+`tests/` holds 265 tests. Besides the read path (cloud-response normalisation — mV, ×10,
 0.1 kWh, the `"False"` string booleans — every entity's value function, the coordinator's
 slow-key cache, the config/reauth flows, and a full setup asserting every entity id and the
 dongle→inverter device link), the write path is covered by pressing the **actual Home

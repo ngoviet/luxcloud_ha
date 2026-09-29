@@ -160,3 +160,51 @@ def test_update_interval_is_applied_to_the_coordinator(hass) -> None:
 
     coordinator = _coordinator(hass, _StubApi([]), _entry())
     assert coordinator.update_interval == timedelta(seconds=300)
+
+
+# ── bộ đếm poll hỏng ───────────────────────────────────────────
+
+
+async def test_failed_updates_counts_consecutive_failures(hass) -> None:
+    """1 lần lỗi là bình thường, 20 lần liên tiếp là sự cố — phải đếm được."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    api = _StubApi([BASE_DATA])
+    coordinator = _coordinator(hass, api, _entry())
+    await coordinator._async_update_data()
+    assert coordinator.failed_updates == 0
+
+    api.error = LuxCloudApiError("mạng lỗi")
+    for expected in (1, 2, 3):
+        with pytest.raises(UpdateFailed):
+            await coordinator._async_update_data()
+        assert coordinator.failed_updates == expected
+
+    api.error = None
+    await coordinator._async_update_data()
+    assert coordinator.failed_updates == 0, "poll thành công phải reset bộ đếm"
+
+
+async def test_empty_cloud_response_also_counts_as_a_failure(hass) -> None:
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    api = _StubApi([{}])
+    coordinator = _coordinator(hass, api, _entry())
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator.failed_updates == 1
+
+
+async def test_auth_failure_also_counts(hass) -> None:
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    api = _StubApi(error=LuxCloudAuthError("sai mật khẩu"))
+    coordinator = _coordinator(hass, api, _entry())
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+    assert coordinator.failed_updates == 1
+
+
+def test_failed_updates_starts_at_zero(hass) -> None:
+    assert _coordinator(hass, _StubApi([]), _entry()).failed_updates == 0
+

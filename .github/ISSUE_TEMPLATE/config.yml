@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup and troubleshooting
+    url: https://github.com/ngoviet/luxcloud_ha#troubleshooting
+    about: Cannot connect, invalid auth, entities unavailable or frozen — most of it is answered here.
+  - name: What this integration can and cannot read
+    url: https://github.com/ngoviet/luxcloud_ha#notes-and-limitations
+    about: The cloud API does not expose everything; check here before reporting missing data.

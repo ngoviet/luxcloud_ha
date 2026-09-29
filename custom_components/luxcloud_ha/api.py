@@ -108,6 +108,11 @@ class LuxCloudApi:
         self.serial = serial.upper()
         self.user_id: int | None = None
         self.plant_id: int | None = None
+        # Khoá tuần tự hoá ĐƯỜNG GHI. HA có thể phát nhiều lệnh ghi cùng lúc
+        # (bấm 2 switch liền nhau, hoặc switch + service set_bit), và cloud không
+        # bảo đảm thứ tự giữa các request rời. `asyncio.Lock` phát khoá theo FIFO,
+        # nên các lệnh ra khỏi đây ĐÚNG thứ tự người dùng yêu cầu.
+        self._write_lock = asyncio.Lock()
 
     # ── HTTP ───────────────────────────────────────────────────
     async def _post(self, endpoint: str, params: dict | None, base: str | None = None) -> dict | None:
@@ -305,49 +310,57 @@ class LuxCloudApi:
 
         ⚠️ `enable` phải gửi dạng CHUỖI `"true"`/`"false"` — đúng như APK gửi.
         Trả `True` nếu cloud nhận (`success` là true).
+
+        Ghi được tuần tự hoá bằng `_write_lock`: hai lệnh ghi chồng nhau sẽ ra
+        theo đúng thứ tự được gọi, không đan xen.
         """
-        r = await self._post(
-            EP_FUNCTION_CONTROL,
-            {
-                "inverterSn": self.serial,
-                "functionParam": function_param,
-                "enable": "true" if enable else "false",
-                "clientType": "APP",
-                "remoteSetType": REMOTE_SET_TYPE,
-            },
-        ) or {}
-        if not r.get("success"):
-            _LOGGER.warning(
-                "luxcloud: đặt bit %s=%s thất bại: %s",
-                function_param,
-                enable,
-                r.get("msg") or "không có phản hồi",
-            )
-            return False
-        _LOGGER.info("luxcloud: đã đặt bit %s=%s qua cloud", function_param, enable)
-        return True
+        async with self._write_lock:
+            r = await self._post(
+                EP_FUNCTION_CONTROL,
+                {
+                    "inverterSn": self.serial,
+                    "functionParam": function_param,
+                    "enable": "true" if enable else "false",
+                    "clientType": "APP",
+                    "remoteSetType": REMOTE_SET_TYPE,
+                },
+            ) or {}
+            if not r.get("success"):
+                _LOGGER.warning(
+                    "luxcloud: đặt bit %s=%s thất bại: %s",
+                    function_param,
+                    enable,
+                    r.get("msg") or "không có phản hồi",
+                )
+                return False
+            _LOGGER.info("luxcloud: đã đặt bit %s=%s qua cloud", function_param, enable)
+            return True
 
     async def set_quick(self, action: str, op: str) -> bool:
         """Bắt đầu/dừng quick charge hoặc quick discharge (ghi qua cloud).
 
         `action` ∈ QUICK_ACTIONS (`quickCharge`/`quickDischarge`), `op` ∈ QUICK_OPS
-        (`start`/`stop`).
+        (`start`/`stop`). Cũng đi qua `_write_lock`.
         """
         if action not in QUICK_ACTIONS:
             raise ValueError(f"action không hợp lệ: {action!r}")
         if op not in QUICK_OPS:
             raise ValueError(f"op không hợp lệ: {op!r}")
-        r = await self._post(
-            EP_QUICK_ACTION.format(action=action, op=op),
-            {"inverterSn": self.serial, "clientType": "APP"},
-        ) or {}
-        if not r.get("success"):
-            _LOGGER.warning(
-                "luxcloud: %s/%s thất bại: %s", action, op, r.get("msg") or "không có phản hồi"
-            )
-            return False
-        _LOGGER.info("luxcloud: đã gửi %s/%s qua cloud", action, op)
-        return True
+        async with self._write_lock:
+            r = await self._post(
+                EP_QUICK_ACTION.format(action=action, op=op),
+                {"inverterSn": self.serial, "clientType": "APP"},
+            ) or {}
+            if not r.get("success"):
+                _LOGGER.warning(
+                    "luxcloud: %s/%s thất bại: %s",
+                    action,
+                    op,
+                    r.get("msg") or "không có phản hồi",
+                )
+                return False
+            _LOGGER.info("luxcloud: đã gửi %s/%s qua cloud", action, op)
+            return True
 
     async def get_day_curve(self, date_text: str) -> dict:
         r = await self._post(

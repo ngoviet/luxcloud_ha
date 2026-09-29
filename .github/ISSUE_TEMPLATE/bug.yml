@@ -1,0 +1,81 @@
+name: Bug report
+description: Something is wrong with the LuxCloud integration
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        **Please attach the diagnostics file first** — it usually answers the question on its own.
+        Settings → Devices & Services → LuxCloud → ⋮ → **Download diagnostics**.
+
+        That file is safe to post publicly: the account, password, serial numbers and plant name
+        are replaced with `**REDACTED**` before you ever see it. Raw readings, bit states and
+        firmware codes are kept on purpose, because that is what makes it useful.
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: Settings → About.
+      placeholder: "2026.9.4"
+    validations:
+      required: true
+
+  - type: input
+    id: integration_version
+    attributes:
+      label: LuxCloud integration version
+      description: Shown on the LuxCloud card under Settings → Devices & Services.
+      placeholder: "1.1.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: region
+    attributes:
+      label: Cloud region
+      description: The region you picked when adding the integration.
+      options:
+        - vn
+        - as
+        - na
+        - eu2
+        - ind
+        - af
+        - phi
+        - us
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead? Include the entity id if it is about one entity.
+      placeholder: |
+        sensor.luxcloud_chu_ky_pin shows "unknown" since this morning.
+        I expected the battery cycle count.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Settings → System → Logs, filtered on `luxcloud_ha`.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before posting
+      options:
+        - label: I attached the diagnostics file (redacted automatically).
+          required: false
+        - label: I am not using the same LuxCloud account in the phone app right now, or I have already tried a longer scan interval.
+          required: false
