@@ -29,7 +29,6 @@ body:
     attributes:
       label: LuxCloud integration version
       description: Shown on the LuxCloud card under Settings → Devices & Services.
-      placeholder: "1.1.1"
     validations:
       required: true
 
