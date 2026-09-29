@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from homeassistant.components.diagnostics import REDACTED
 
 from custom_components.luxcloud_ha.diagnostics import (
@@ -149,3 +150,53 @@ async def test_output_is_json_serialisable(hass, patched_api) -> None:
 
     text = json.dumps(diag)
     assert json.loads(text)["entry"]["data"]["password"] == REDACTED
+
+
+# ── trạng thái coordinator ─────────────────────────────────────
+
+
+async def test_coordinator_state_is_reported_when_healthy(hass, patched_api) -> None:
+    entry = await setup_luxcloud(hass)
+    coord = (await _diagnostics(hass, entry))["coordinator"]
+
+    assert coord["last_update_success"] is True
+    assert coord["failed_updates"] == 0
+    assert coord["last_exception"] is None
+    assert coord["last_update_success_time"] is not None
+    assert coord["update_interval"] == "0:05:00"
+    assert coord["tick"] == 1
+
+
+@pytest.mark.no_fail_on_log_exception
+async def test_coordinator_state_shows_a_flaky_cloud(hass, patched_api) -> None:
+    """Thứ giúp phân biệt 'cloud chập chờn' với 'sai cấu hình' mà không cần mở log."""
+    from custom_components.luxcloud_ha.api import LuxCloudApiError
+
+    entry = await setup_luxcloud(hass)
+    patched_api.fetch_error = LuxCloudApiError("mạng lỗi")
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    coord = (await _diagnostics(hass, entry))["coordinator"]
+    assert coord["last_update_success"] is False
+    assert coord["failed_updates"] == 1
+    assert "UpdateFailed" in coord["last_exception"]
+
+
+@pytest.mark.no_fail_on_log_exception
+async def test_recovery_resets_the_failure_counter(hass, patched_api) -> None:
+    from custom_components.luxcloud_ha.api import LuxCloudApiError
+
+    entry = await setup_luxcloud(hass)
+    patched_api.fetch_error = LuxCloudApiError("mạng lỗi")
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    patched_api.fetch_error = None
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    coord = (await _diagnostics(hass, entry))["coordinator"]
+    assert coord["last_update_success"] is True
+    assert coord["failed_updates"] == 0
+

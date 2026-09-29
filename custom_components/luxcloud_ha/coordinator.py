@@ -7,7 +7,10 @@ from datetime import timedelta
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import (
+    TimestampDataUpdateCoordinator,
+    UpdateFailed,
+)
 from homeassistant.util import dt as dt_util
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
@@ -23,8 +26,13 @@ _LOGGER = logging.getLogger(__name__)
 SLOW_KEYS = ("firmware", "day_curve", "total_years")
 
 
-class LuxCloudCoordinator(DataUpdateCoordinator[dict]):
-    """Poll cloud mỗi `scan_interval`; dữ liệu 'chậm' (firmware/chuỗi) lấy mỗi SLOW_EVERY lần."""
+class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
+    """Poll cloud mỗi `scan_interval`; dữ liệu 'chậm' (firmware/chuỗi) lấy mỗi SLOW_EVERY lần.
+
+    Kế thừa `TimestampDataUpdateCoordinator` (không phải `DataUpdateCoordinator`) vì
+    nó ghi lại `last_update_success_time` — thứ cần để trả lời "dữ liệu này cũ bao lâu"
+    trong diagnostics mà không phải tự thêm state.
+    """
 
     def __init__(
         self,
@@ -43,6 +51,10 @@ class LuxCloudCoordinator(DataUpdateCoordinator[dict]):
         self.api = api
         self._tick = 0
         self._cache: dict = {}
+        # Đếm số lần poll HỎNG LIÊN TIẾP. HA không có sẵn bộ đếm này, mà nó là
+        # thứ cần nhất khi cloud chập chờn: 1 lần lỗi là bình thường, 20 lần liên
+        # tiếp là sự cố thật. Đưa vào diagnostics để khỏi phải mò log.
+        self.failed_updates = 0
 
     async def _async_update_data(self) -> dict:
         self._tick += 1
@@ -56,12 +68,17 @@ class LuxCloudCoordinator(DataUpdateCoordinator[dict]):
                 slow=slow, date_text=dt_util.now().strftime("%Y-%m-%d")
             )
         except LuxCloudAuthError as err:
+            self.failed_updates += 1
             raise ConfigEntryAuthFailed(str(err)) from err
         except LuxCloudApiError as err:
+            self.failed_updates += 1
             raise UpdateFailed(str(err)) from err
 
         if not data.get("plant") and not data.get("runtime"):
+            self.failed_updates += 1
             raise UpdateFailed("cloud không trả dữ liệu (plant/runtime rỗng)")
+
+        self.failed_updates = 0
 
         # giữ dữ liệu 'chậm' giữa các tick
         for key in SLOW_KEYS:

@@ -744,3 +744,66 @@ def test_set_quick_rejects_unknown_commands_without_calling_the_cloud(
 
     assert calls == []
 
+
+# ── tuần tự hoá đường GHI ──────────────────────────────────────
+
+
+def test_concurrent_writes_are_serialised() -> None:
+    """HA có thể phát nhiều lệnh ghi cùng lúc; chúng KHÔNG được đan xen.
+
+    Nếu đan xen, hai lệnh ghi lên cùng một bit có thể tới cloud sai thứ tự —
+    bấm switch hai lần liên tiếp mà lần đầu lại thắng là kiểu hỏng rất khó thấy.
+    """
+    api = make_api()
+    active = 0
+    max_active = 0
+    order: list[str] = []
+
+    async def slow_post(endpoint, params=None, base=None):
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        order.append(endpoint)
+        await asyncio.sleep(0.01)   # đủ dài để lệnh sau chen vào nếu không khoá
+        active -= 1
+        return {"success": True}
+
+    api._post = slow_post
+
+    async def go():
+        await asyncio.gather(
+            api.set_config_bit("FUNC_GRID_PEAK_SHAVING", True),
+            api.set_config_bit("FUNC_GEN_PEAK_SHAVING", False),
+            api.set_quick(const.QUICK_CHARGE, "start"),
+        )
+
+    run(go())
+
+    assert max_active == 1, f"có {max_active} lệnh ghi chạy chồng nhau"
+    assert order == [
+        const.EP_FUNCTION_CONTROL,
+        const.EP_FUNCTION_CONTROL,
+        "/web/config/quickCharge/start",
+    ], "thứ tự ghi không khớp thứ tự gọi"
+
+
+def test_a_failing_write_does_not_wedge_the_lock() -> None:
+    """Ghi lỗi vẫn phải nhả khoá, nếu không mọi lệnh ghi sau bị treo."""
+    api = make_api()
+    patch_post(api, route({const.EP_FUNCTION_CONTROL: {"success": False}}))
+
+    async def go():
+        first = await api.set_config_bit("FUNC_GRID_PEAK_SHAVING", True)
+        second = await api.set_config_bit("FUNC_GEN_PEAK_SHAVING", True)
+        return first, second
+
+    assert run(go()) == (False, False)
+    assert not api._write_lock.locked()
+
+
+def test_writes_still_succeed_through_the_lock() -> None:
+    api = make_api()
+    calls = patch_post(api, route({const.EP_FUNCTION_CONTROL: {"success": True}}))
+    assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is True
+    assert len(calls) == 1
+

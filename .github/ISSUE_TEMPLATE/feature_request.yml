@@ -1,0 +1,45 @@
+name: Feature request
+description: Suggest an idea or a new entity for the LuxCloud integration
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening a request, please check the **Notes and limitations** section of the README —
+        some data is simply not available through the cloud API (battery SOH, per-phase readings on
+        non-parallel sites), and some settings are deliberately left to a local Modbus integration
+        so that two integrations never write the same inverter setting.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the problem, not the solution. What does the phone app show that you cannot get in Home Assistant?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like the integration to do?
+      description: An entity, a service, an attribute — whatever you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have tried
+      description: Templates, REST sensors, a local Modbus integration — did anything get you close?
+    validations:
+      required: false
+
+  - type: input
+    id: inverter
+    attributes:
+      label: Inverter model and firmware code
+      description: From the `sensor.luxcloud_ma_firmware_inverter` entity, or Device → Info in the app.
+      placeholder: "6.5kW (CHAA), CHAA-000303"
+    validations:
+      required: false

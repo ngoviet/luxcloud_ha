@@ -67,6 +67,19 @@ async def async_get_config_entry_diagnostics(
             },
             "coordinator": {
                 "last_update_success": coordinator.last_update_success,
+                "last_update_success_time": (
+                    coordinator.last_update_success_time.isoformat()
+                    if coordinator.last_update_success_time
+                    else None
+                ),
+                # Lỗi gần nhất giúp phân biệt "cloud chập chờn" với "sai cấu hình"
+                # mà không cần mở log.
+                "last_exception": (
+                    f"{type(coordinator.last_exception).__name__}: {coordinator.last_exception}"
+                    if coordinator.last_exception
+                    else None
+                ),
+                "failed_updates": getattr(coordinator, "failed_updates", None),
                 "update_interval": str(coordinator.update_interval),
                 "tick": getattr(coordinator, "_tick", None),
             },
