@@ -1,6 +1,7 @@
 """Setup integration LuxCloud (Phase 2 — có đường GHI qua cloud)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -22,6 +23,7 @@ from .const import (
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_SERIAL,
+    CONFIG_WRITE_SETTLE,
     DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -101,6 +103,8 @@ async def _async_handle_set_bit(hass: HomeAssistant, call: ServiceCall) -> None:
             raise HomeAssistantError(
                 f"LuxCloud không đặt được {function} = {enable} trên {entry.title} (cloud từ chối)."
             )
+        if CONFIG_WRITE_SETTLE:
+            await asyncio.sleep(CONFIG_WRITE_SETTLE)
         await coordinator.async_request_refresh()
     _LOGGER.info("luxcloud: service set_bit %s=%s xong", function, enable)
 
