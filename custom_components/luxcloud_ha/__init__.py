@@ -64,9 +64,10 @@ SET_BIT_SCHEMA = vol.Schema(
 async def _async_entries_for_call(hass: HomeAssistant, call: ServiceCall) -> list:
     """Entry mà service call nhắm tới.
 
-    Có target (device/entity/area) → các entry tương ứng. Không target → chỉ dùng
-    khi đúng MỘT inverter đang chạy; nhiều inverter mà không target thì báo lỗi
-    thay vì đoán bừa (ghi nhầm inverter là hỏng thật).
+    Có target (device/entity/area) → các entry tương ứng ĐÃ LOAD (entry chưa load
+    không có `runtime_data`). Không target → chỉ dùng khi đúng MỘT inverter đang
+    chạy; nhiều inverter mà không target thì báo lỗi thay vì đoán bừa (ghi nhầm
+    inverter là hỏng thật).
     """
     entry_ids = await async_extract_config_entry_ids(call)
     entries = [
@@ -118,7 +119,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     hass.services.async_register(DOMAIN, SERVICE_SET_BIT, _handle, schema=SET_BIT_SCHEMA)
     return True
-
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: LuxCloudConfigEntry) -> bool:

@@ -91,7 +91,7 @@ def _num_text(txt: Any) -> float | None:
 
 
 class LuxCloudApi:
-    """Bọc các lời gọi cloud cần cho Phase 1 (chỉ đọc)."""
+    """Bọc các lời gọi cloud của LuxCloud (đọc Phase 1 + ghi Phase 2)."""
 
     def __init__(
         self,

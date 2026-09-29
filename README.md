@@ -266,7 +266,7 @@ All tooling runs from the repository root and needs no third-party packages beyo
 
 ### Tests
 
-`tests/` holds 220 tests. Besides the read path (cloud-response normalisation — mV, ×10,
+`tests/` holds 229 tests. Besides the read path (cloud-response normalisation — mV, ×10,
 0.1 kWh, the `"False"` string booleans — every entity's value function, the coordinator's
 slow-key cache, the config/reauth flows, and a full setup asserting every entity id and the
 dongle→inverter device link), the write path is covered by pressing the **actual Home

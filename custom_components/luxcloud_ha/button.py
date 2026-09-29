@@ -106,7 +106,11 @@ class LuxCloudQuickButton(CoordinatorEntity[LuxCloudCoordinator], ButtonEntity):
 
     @property
     def available(self) -> bool:
-        """`start` chỉ hiện khi task đang không chạy; `stop` chỉ khi đang chạy."""
+        """`start` hiện khi task đang nghỉ, `stop` khi đang chạy.
+
+        Khi chưa biết trạng thái (cloud lỗi) thì cả bốn nút đều available — không
+        bao giờ giấu nút `stop` của một tác vụ có thể đang chạy.
+        """
         if not super().available:
             return False
         running = _is_running(self.coordinator, self.entity_description.action)
