@@ -10,6 +10,7 @@ import asyncio
 
 import pytest
 import voluptuous as vol
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.luxcloud_ha import SERVICE_SET_BIT
@@ -429,5 +430,33 @@ async def test_set_bit_service_rejects_a_target_from_another_integration(
             {"function": "FUNC_RSD_DISABLE", "enable": True, "device_id": device.id},
         )
 
+    assert api.bit_writes == []
+
+
+async def test_set_bit_service_rejects_a_target_whose_entry_is_unloaded(
+    hass, patched_api, no_write_settle
+) -> None:
+    """Target trỏ vào entry CHƯA/không còn loaded ⇒ báo lỗi HA, KHÔNG AttributeError."""
+    from homeassistant.helpers import device_registry as dr
+
+    entry = await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+    device = next(
+        iter(dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id))
+    )
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.NOT_LOADED
+
+    with pytest.raises(HomeAssistantError) as err:
+        await _call(
+            hass,
+            DOMAIN,
+            SERVICE_SET_BIT,
+            {"function": "FUNC_RSD_DISABLE", "enable": True, "device_id": device.id},
+        )
+
+    assert not isinstance(err.value, AttributeError)
     assert api.bit_writes == []
 
