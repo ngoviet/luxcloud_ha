@@ -21,18 +21,6 @@ import hass  # noqa: E402
 DOMAIN = "luxcloud_ha"
 
 
-def _walk(node, path=""):
-    """Sinh (đường dẫn, giá trị) cho mọi lá của JSON."""
-    if isinstance(node, dict):
-        for key, value in node.items():
-            yield from _walk(value, f"{path}.{key}")
-    elif isinstance(node, list):
-        for index, value in enumerate(node):
-            yield from _walk(value, f"{path}[{index}]")
-    else:
-        yield path, node
-
-
 def main() -> int:
     status, entries = hass.api("/api/config/config_entries/entry")
     if status != 200:
