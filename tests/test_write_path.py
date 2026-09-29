@@ -188,6 +188,47 @@ async def test_start_button_is_available_only_while_idle(hass, patched_api) -> N
     assert hass.states.get("button.luxcloud_quick_charge_stop").state != "unavailable"
 
 
+async def test_all_buttons_available_when_quick_status_is_missing(hass, patched_api) -> None:
+    """Không có quick status ⇒ không được đoán 'idle' mà phải để cả 4 nút bấm được."""
+    await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+    del api.data["quick"]
+    await _refresh(hass)
+
+    for entity_id in ALL_BUTTONS:
+        assert hass.states.get(entity_id).state != "unavailable", entity_id
+
+
+async def test_charge_and_discharge_buttons_follow_their_own_task(
+    hass, patched_api
+) -> None:
+    """Đang charge ⇒ start-charge ẩn, stop-charge hiện; discharge giữ luật riêng."""
+    await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+    _set_quick_state(api, charging=True)
+    await _refresh(hass)
+
+    assert hass.states.get("button.luxcloud_quick_charge_start").state == "unavailable"
+    assert hass.states.get("button.luxcloud_quick_charge_stop").state != "unavailable"
+    assert hass.states.get("button.luxcloud_quick_discharge_start").state != "unavailable"
+    assert hass.states.get("button.luxcloud_quick_discharge_stop").state == "unavailable"
+
+
+async def test_idle_buttons_show_start_available_and_stop_unavailable(
+    hass, patched_api
+) -> None:
+    """Mọi task rảnh ⇒ start hiện, stop ẩn."""
+    await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+    _set_quick_state(api)
+    await _refresh(hass)
+
+    assert hass.states.get("button.luxcloud_quick_charge_start").state != "unavailable"
+    assert hass.states.get("button.luxcloud_quick_charge_stop").state == "unavailable"
+    assert hass.states.get("button.luxcloud_quick_discharge_start").state != "unavailable"
+    assert hass.states.get("button.luxcloud_quick_discharge_stop").state == "unavailable"
+
+
 # ── Service set_bit ───────────────────────────────────────────
 
 

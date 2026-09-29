@@ -70,8 +70,10 @@ BUTTONS: tuple[LuxButtonDescription, ...] = (
 )
 
 
-def _is_running(coordinator: LuxCloudCoordinator, action: str) -> bool:
+def _is_running(coordinator: LuxCloudCoordinator, action: str) -> bool | None:
     quick = (coordinator.data or {}).get("quick") or {}
+    if not quick:
+        return None
     return bool(quick.get("charging") if action == QUICK_CHARGE else quick.get("discharging"))
 
 
@@ -108,6 +110,8 @@ class LuxCloudQuickButton(CoordinatorEntity[LuxCloudCoordinator], ButtonEntity):
         if not super().available:
             return False
         running = _is_running(self.coordinator, self.entity_description.action)
+        if running is None:
+            return True
         return running if self.entity_description.op == "stop" else not running
 
     async def async_press(self) -> None:
