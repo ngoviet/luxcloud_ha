@@ -1,7 +1,7 @@
 """Switch platform — 3 bit cấu hình HR[179] ghi qua cloud (Phase 2).
 
 ⚠️ ĐÂY LÀ ĐƯỜNG GHI THẬT (cloud → dongle → inverter), giống hệt app LuxCloud.
-Chỉ 3 bit được tạo entity — xem `SWITCH_BIT_KEYS` trong `const.py` để biết vì sao
+Chỉ 3 bit được tạo entity — xem `SWITCHES` bên dưới để biết vì sao
 các bit còn lại CỐ Ý không có switch (tránh 2 nguồn ghi với `lxp_modbus`).
 """
 from __future__ import annotations

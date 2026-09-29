@@ -106,16 +106,12 @@ CONFIG_BIT_KEYS = (
     "FUNC_RSD_DISABLE",
 )
 
-# ⚠️ CHỈ 3 bit này được tạo entity `switch`. Cả 3 đều thuộc HR[179] — nhóm mà
-# `lxp_modbus` (Modbus local) KHÔNG expose. Các bit còn lại trong CONFIG_BIT_KEYS
-# trùng chức năng với entity local đã có (charge_last, green_mode, smart_load,
-# CT direction…) nên CỐ Ý không tạo switch: hai nguồn ghi cùng một cấu hình sẽ
-# đá nhau. Vẫn đặt được bằng service `luxcloud_ha.set_bit` khi thật cần.
-SWITCH_BIT_KEYS = (
-    "FUNC_GRID_PEAK_SHAVING",
-    "FUNC_GEN_PEAK_SHAVING",
-    "FUNC_ACTIVE_POWER_LIMIT_MODE",
-)
+# ⚠️ CHỈ 3 bit này được tạo entity `switch` — xem `switch.SWITCHES`. Cả 3 đều
+# thuộc HR[179] — nhóm mà `lxp_modbus` (Modbus local) KHÔNG expose. Các bit còn
+# lại trong CONFIG_BIT_KEYS trùng chức năng với entity local đã có
+# (charge_last, green_mode, smart_load, CT direction…) nên CỐ Ý không tạo switch:
+# hai nguồn ghi cùng một cấu hình sẽ đá nhau. Vẫn đặt được bằng service
+# `luxcloud_ha.set_bit` khi thật cần.
 
 # Giây đợi cloud→dongle sau khi ghi bit, trước khi đọc lại (giống `delay: 3s`
 # của script cũ). Đặt 0 trong test để khỏi chờ thật.
