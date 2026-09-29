@@ -245,7 +245,8 @@ a state — so a stale `off` is never mistaken for a real one.
 | Phase | Content | State |
 |---|---|---|
 | 1 | Read-only: health, faults, BMS, power, energy, firmware, day curve, totals, config bits | ✅ shipped as `v1.0.0` |
-| 2 | `switch` for HR[179] config bits, `button`s for quick charge/discharge, `set_bit` service | ✅ shipped |
+| 2 | `switch` for HR[179] config bits, `button`s for quick charge/discharge, `set_bit` service | ✅ shipped as `v1.1.0` |
+| 2.1 | Hardening: writes serialised so two commands cannot interleave, coordinator state in diagnostics, issue templates | ✅ shipped as `v1.2.0` |
 | 3 | Options polish, more translations | ⏳ planned |
 
 Submitting to the HACS default store is deliberately **not** planned: this integration talks to
