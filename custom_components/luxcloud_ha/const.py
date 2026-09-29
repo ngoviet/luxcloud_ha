@@ -113,7 +113,7 @@ CONFIG_BIT_KEYS = (
 # hai nguồn ghi cùng một cấu hình sẽ đá nhau. Vẫn đặt được bằng service
 # `luxcloud_ha.set_bit` khi thật cần.
 
-# Giây đợi cloud→dongle sau khi ghi bit, trước khi đọc lại (giống `delay: 3s`
+# Giây đợi cloud→dongle sau khi ghi bit, trước khi đọc lại (tương tự `delay`
 # của script cũ). Đặt 0 trong test để khỏi chờ thật.
 CONFIG_WRITE_SETTLE = 2.0
 
