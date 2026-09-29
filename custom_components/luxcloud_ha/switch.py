@@ -93,7 +93,12 @@ class LuxCloudSwitch(CoordinatorEntity[LuxCloudCoordinator], SwitchEntity):
     @property
     def available(self) -> bool:
         """Không có dữ liệu bit thì KHÔNG được đoán trạng thái để bấm."""
-        return super().available and self._bits is not None
+        bits = self._bits
+        return (
+            super().available
+            and bits is not None
+            and self.entity_description.function_param in bits
+        )
 
     @property
     def is_on(self) -> bool:
