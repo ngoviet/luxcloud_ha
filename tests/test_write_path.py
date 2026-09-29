@@ -124,6 +124,20 @@ async def test_switch_is_unavailable_when_cloud_returns_no_bits(
         assert hass.states.get(entity_id).state == "unavailable", entity_id
 
 
+async def test_switch_unavailable_when_its_own_bit_key_is_missing(
+    hass, patched_api
+) -> None:
+    """Thiếu đúng key bit của switch ⇒ switch đó unavailable, key còn lại vẫn bình thường."""
+    await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+    del api.data["bits"]["FUNC_GRID_PEAK_SHAVING"]
+    await _refresh(hass)
+
+    assert hass.states.get("switch.luxcloud_grid_peak_shaving").state == "unavailable"
+    assert hass.states.get("switch.luxcloud_gen_peak_shaving").state != "unavailable"
+    assert hass.states.get("switch.luxcloud_active_power_limit_mode").state != "unavailable"
+
+
 # ── Button: quick charge / discharge ──────────────────────────
 
 
@@ -196,6 +210,20 @@ async def test_set_bit_service_writes_an_exposed_and_a_nonexposed_bit(
 
     await _refresh(hass)
     assert hass.states.get("switch.luxcloud_grid_peak_shaving").state == "on"
+
+
+async def test_set_bit_service_coerces_string_false_to_false(
+    hass, patched_api, no_write_settle
+) -> None:
+    """Chuỗi 'false' phải ghi False, KHÔNG được coi là truthy rồi ghi True."""
+    await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+
+    await _call(
+        hass, DOMAIN, SERVICE_SET_BIT, {"function": "FUNC_RSD_DISABLE", "enable": "false"}
+    )
+
+    assert api.bit_writes == [("FUNC_RSD_DISABLE", False)]
 
 
 async def test_set_bit_service_asks_the_coordinator_to_refresh(
@@ -283,4 +311,40 @@ async def test_set_bit_service_writes_only_the_targeted_inverter(
     written = [api for api in patched_api.instances if api.bit_writes]
     assert len(written) == 1, [api.bit_writes for api in patched_api.instances]
     assert written[0].bit_writes == [("FUNC_RSD_DISABLE", True)]
+
+
+async def test_set_bit_service_rejects_a_target_from_another_integration(
+    hass, patched_api, no_write_settle
+) -> None:
+    """Target thuộc integration khác ⇒ phải báo lỗi, KHÔNG ghi nhầm inverter duy nhất."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from homeassistant.helpers import device_registry as dr
+
+    await setup_luxcloud(hass)
+    api = patched_api.instances[-1]
+
+    other_entry = MockConfigEntry(
+        domain="mqtt",
+        title="MQTT",
+        data={},
+        entry_id="mqtt_entry_1",
+    )
+    other_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=other_entry.entry_id,
+        identifiers={("mqtt", "device-1")},
+        name="MQTT device",
+    )
+    await hass.async_block_till_done()
+
+    with pytest.raises(HomeAssistantError):
+        await _call(
+            hass,
+            DOMAIN,
+            SERVICE_SET_BIT,
+            {"function": "FUNC_RSD_DISABLE", "enable": True, "device_id": device.id},
+        )
+
+    assert api.bit_writes == []
 

@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.service import async_extract_config_entry_ids
@@ -44,10 +45,12 @@ SERVICE_SET_BIT = "set_bit"
 ATTR_FUNCTION = "function"
 ATTR_ENABLE = "enable"
 
+TARGET_KEYS = ("device_id", "entity_id", "area_id", "floor_id", "label_id")
+
 SET_BIT_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_FUNCTION): vol.All(str, vol.Match(r"^FUNC_[A-Z0-9_]+$")),
-        vol.Required(ATTR_ENABLE): vol.Coerce(bool),
+        vol.Required(ATTR_ENABLE): cv.boolean,
     },
     # Cho phép các khoá target của HA (device_id/entity_id/area_id…) đi qua —
     # đúng cách HA core làm cho service nhắm tới thiết bị; chúng được đọc bằng
@@ -64,15 +67,19 @@ async def _async_entries_for_call(hass: HomeAssistant, call: ServiceCall) -> lis
     thay vì đoán bừa (ghi nhầm inverter là hỏng thật).
     """
     entry_ids = await async_extract_config_entry_ids(call)
-    if entry_ids:
-        entries = [
-            entry
-            for entry_id in entry_ids
-            if (entry := hass.config_entries.async_get_entry(entry_id)) is not None
-            and entry.domain == DOMAIN
-        ]
-        if entries:
-            return entries
+    entries = [
+        entry
+        for entry_id in entry_ids
+        if (entry := hass.config_entries.async_get_entry(entry_id)) is not None
+        and entry.domain == DOMAIN
+    ]
+    if entries:
+        return entries
+
+    if any(key in call.data for key in TARGET_KEYS):
+        raise HomeAssistantError(
+            "Không có inverter LuxCloud nào khớp với target được chọn."
+        )
 
     entries = list(hass.config_entries.async_loaded_entries(DOMAIN))
     if len(entries) == 1:
