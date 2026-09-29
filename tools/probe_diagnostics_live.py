@@ -6,7 +6,7 @@ thì unit test vẫn xanh trong khi file user tải lên issue vẫn lộ serial
 đúng cái đã xảy ra một lần. Chỉ kéo file THẬT từ HA mới bắt được.
 
 Chạy: python tools/probe_diagnostics_live.py
-Exit 0 = ĐẠT, 1 = có rò rỉ, 2 = không gọi được HA.
+Exit 0 = ĐẠT, 1 = có vấn đề (rò rỉ hoặc che sai), 2 = không gọi được HA.
 """
 from __future__ import annotations
 

@@ -203,9 +203,9 @@ a state — so a stale `off` is never mistaken for a real one.
   (4.9.8) and verified against a live account. LuxPower can change or restrict it at any time
   without notice. The AES key used for one refresh call is a protocol constant taken from the
   app; the integration is not affiliated with or endorsed by LuxPower.
-- **Cloud only.** No local Modbus/RS485. If the dongle is offline or the vendor cloud is
-  unreachable, entities go stale — `binary_sensor.*_dongle_mat_ket_noi` and the last-report
-  timestamp are there to tell you that.
+- **Cloud only.** No local Modbus/RS485. If the vendor cloud cannot be reached, entities go
+  `unavailable` instead of keeping the last reading; `binary_sensor.*_dongle_mat_ket_noi` and
+  the last-report timestamp tell you how fresh the cloud's data actually is.
 - **Same upload delay as the app.** The dongle pushes to the cloud on its own schedule, so a
   fast `scan_interval` does not make the data younger.
 - **Firmware check is a hint, not an instruction.** The catalogue lists the newest package per
