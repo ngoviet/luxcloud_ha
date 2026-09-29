@@ -59,16 +59,39 @@ def main() -> int:
     after = read_bits()
     print("trạng thái SAU  :", json.dumps(after, ensure_ascii=False))
 
-    changed = {k for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    # Regression cho bug `vol.Coerce(bool)`: chuỗi "false" là TRUTHY trong Python.
+    # Bản cũ vì thế ghi enable=True — tức BẬT bit trong khi người dùng gõ "false".
+    # Ở đây gửi đúng chuỗi đó cho một bit đang tắt và khẳng định nó VẪN tắt.
+    str_results = []
+    for bit in BITS:
+        if after.get(bit):
+            print(f"  BỎ QUA kiểm chuỗi cho {bit}: đang BẬT")
+            continue
+        status, _ = hass.api(
+            "/api/services/luxcloud_ha/set_bit",
+            payload={"function": bit, "enable": "false"},
+            method="POST",
+        )
+        print(f"  ghi {bit} với CHUỖI \"false\" -> HTTP {status}")
+        str_results.append((bit, status))
+
+    final = read_bits()
+    flipped = {k for k in final if final.get(k) != after.get(k)}
+
+    changed = {k for k in set(before) | set(final) if before.get(k) != final.get(k)}
     failed = [b for b, state, _ in results if state == "failed"]
     written = [b for b, state, _ in results if state == "written"]
+    str_failed = [b for b, status in str_results if status != 200]
 
     print(f"\nđã ghi thật: {written}")
+    print(f"đã gửi chuỗi \"false\": {[b for b, _ in str_results]}")
+    if flipped:
+        print(f"!! CẢNH BÁO: bit bị lật bởi chuỗi \"false\": {flipped}")
     if changed:
         print(f"!! CẢNH BÁO: bit đổi trạng thái: {changed}")
-    if failed:
-        print(f"!! ghi thất bại: {failed}")
-    ok = bool(written) and not changed and not failed
+    if failed or str_failed:
+        print(f"!! ghi thất bại: {failed + str_failed}")
+    ok = bool(written) and not changed and not flipped and not failed and not str_failed
     print(f"KẾT LUẬN: {'ĐẠT' if ok else 'CẦN XEM LẠI'}")
     return 0 if ok else 1
 
