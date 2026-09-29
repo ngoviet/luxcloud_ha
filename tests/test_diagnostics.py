@@ -43,6 +43,7 @@ async def test_no_secret_value_appears_anywhere_in_the_file(hass, patched_api) -
         ("serial inverter", INVERTER_SERIAL),
         ("serial dongle", DONGLE_SN),
         ("tên plant", PLANT_NAME),
+        ("id plant", str(PLANT_ID)),
     ):
         assert secret not in blob, f"diagnostics làm lọt {label}: {secret!r}"
 
