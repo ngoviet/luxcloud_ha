@@ -42,7 +42,11 @@ EXPECTED_ENTITY_IDS = {
     "binary_sensor.luxcloud_cloud_co_du_lieu",
     "binary_sensor.luxcloud_dang_chay_quick_charge_discharge",
     "binary_sensor.luxcloud_co_firmware_moi",
-    "binary_sensor.luxcloud_dang_chay_khong_luoi_isoffgrid",
+    # Tên đổi 2026-09-30: "(isOffGrid)" → "(EPS)" vì key `isOffGrid` không tồn
+    # tại trong payload runtime. Trên hệ thống ĐANG CHẠY, registry giữ
+    # entity_id cũ `..._isoffgrid` (HA không đổi entity_id khi chỉ đổi name);
+    # ở đây registry mới nên slug theo tên mới.
+    "binary_sensor.luxcloud_dang_chay_khong_luoi_eps",
     # ── inverter: switch (3 bit HR[179]) ──────────────────────
     "switch.luxcloud_grid_peak_shaving",
     "switch.luxcloud_gen_peak_shaving",

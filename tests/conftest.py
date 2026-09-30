@@ -71,12 +71,18 @@ def plant_payload(
 
 
 def runtime_payload(*, pinv: int = 1095, prec: int = 0, off_grid: bool = False) -> dict:
+    # ⚠️ Payload thật của `remoteRead/read` KHÔNG có key `isOffGrid`
+    # (đo 2026-09-30 07:11 khi inverter đang chạy EPS). Trạng thái không lưới
+    # nằm ở bitmask `status` (0x40|0x80 = 0xC0). Fixture phản ánh đúng thực tế.
     return {
         "success": True,
         "hasRuntimeData": True,
         "pinv": pinv,
         "prec": prec,
-        "isOffGrid": off_grid,
+        "status": 192 if off_grid else 8,
+        "vacr": 0 if off_grid else 2217,
+        "fac": 0 if off_grid else 5015,
+        "peps": 1262 if off_grid else 0,
         "fwCode": "CHAA-000303",
         "lost": "False",
     }
@@ -253,7 +259,12 @@ def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
         "runtime": {
             "pinv": 1095,
             "prec": 0,
-            "isOffGrid": False,
+            # Trạng thái thật nằm ở bitmask `status` (không có `isOffGrid`):
+            # 8 = hòa lưới bình thường; 192 (0xC0) = PV+pin gánh EPS (mất lưới).
+            "status": 8,
+            "vacr": 2217,  # 221.7 V
+            "fac": 5015,  # 50.15 Hz
+            "peps": 0,
             "fwCode": "CHAA-000303",
             "serialNum": "61204F0266",
         },

@@ -32,6 +32,55 @@ def _sub(key: str) -> Callable[[dict], dict]:
     return lambda d: d.get(key) or {}
 
 
+# Bit "đang chạy không lưới" trong trường `runtime.status` (bitmask):
+#   0x40 = pin đang gánh EPS (mất lưới)
+#   0x80 = PV không đủ cho EPS (mất lưới)
+#   0xC0 = PV + pin gánh EPS (mất lưới)
+#   0x88 = PV gánh EPS, phần dư sạc pin (mất lưới)
+# ⇒ hai bit cao (0xC0) luôn bật khi inverter chạy không lưới. Bảng bit:
+# https://github.com/celsworth/lxp-bridge/wiki/Inputs#status
+GRID_OFF_MASK = 0xC0
+
+
+def _off_grid(d: dict) -> bool:
+    """True khi inverter đang chạy không lưới (EPS / off-grid).
+
+    ⚠️ Sửa 2026-09-30: bản cũ đọc `runtime.isOffGrid` — **key này KHÔNG tồn tại**
+    trong response `web/maintain/remoteRead/read` của SNA PRO (đối chiếu payload
+    thật lúc 07:11 ngày 30/09/2026, khi inverter ĐANG chạy EPS: không có key
+    `isOffGrid`, nhưng `status = 192` = 0xC0). Hệ quả bản cũ: cờ luôn `off`,
+    kể cả khi mất lưới thật ⇒ không dùng được để cảnh báo mất điện.
+    """
+    rt = _sub("runtime")(d)
+    status = rt.get("status")
+    if status is not None:
+        try:
+            return (int(status) & GRID_OFF_MASK) != 0
+        except (TypeError, ValueError):
+            pass
+    # Dự phòng khi cloud không trả `status`: không có AC ở ngõ vào lưới.
+    try:
+        vacr = float(rt.get("vacr") or 0)
+        fac = float(rt.get("fac") or 0)
+    except (TypeError, ValueError):
+        return False
+    return not (vacr >= 100 or fac >= 45)
+
+
+def _off_grid_attrs(d: dict) -> dict:
+    rt = _sub("runtime")(d)
+    return {
+        "status": rt.get("status"),
+        "grid_voltage_v": rt.get("vacr"),
+        "grid_frequency_hz": rt.get("fac"),
+        "eps_power_w": rt.get("peps"),
+        "note": (
+            "isOffGrid không có trong payload runtime của SNA PRO; "
+            "dùng status & 0xC0 (bit 0x40/0x80) — xem lxp-bridge wiki §Status."
+        ),
+    }
+
+
 def _firmware_attrs(d: dict) -> dict:
     plant = _sub("plant")(d)
     fw = _sub("firmware")(d)
@@ -102,10 +151,15 @@ BINARY_SENSORS: tuple[LuxBinaryDescription, ...] = (
     ),
     LuxBinaryDescription(
         key="off_grid",
-        name="Đang chạy không lưới (isOffGrid)",
+        # Tên đổi 2026-09-30 (bỏ "(isOffGrid)" vì key đó không tồn tại trong API).
+        # ⚠️ `unique_id` giữ nguyên (`{serial}_off_grid`) nên entity_id trong
+        # registry vẫn là `binary_sensor.luxcloud_dang_chay_khong_luoi_isoffgrid`
+        # cho tới khi đổi tay trong Settings → Entities.
+        name="Đang chạy không lưới (EPS)",
         icon="mdi:transmission-tower-off",
         entity_category=EntityCategory.DIAGNOSTIC,
-        is_on_fn=lambda d: bool(_sub("runtime")(d).get("isOffGrid")),
+        is_on_fn=_off_grid,
+        attrs_fn=_off_grid_attrs,
     ),
 )
 

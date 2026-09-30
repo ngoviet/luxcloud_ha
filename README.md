@@ -146,7 +146,7 @@ Multiple inverters: add the integration once per serial number.
 | `binary_sensor.*_su_co_dang_hieu_luc` | | A fault is currently active |
 | `binary_sensor.*_dang_chay_quick_charge_discharge` | | A quick charge/discharge task is running |
 | `binary_sensor.*_co_firmware_moi` | | Newer firmware available than installed |
-| `binary_sensor.*_dang_chay_khong_luoi_isoffgrid` | | Running off-grid |
+| `binary_sensor.*_dang_chay_khong_luoi_eps` | Running off-grid — derived from `runtime.status & 0xC0` (bits `0x40`/`0x80`), **not** from the non-existent `isOffGrid` key (fixed 2026-09-30). On installations that already had the entity, the registry keeps the old entity_id `..._isoffgrid`. |
 | `binary_sensor.*_cloud_co_du_lieu` | | Cloud returned usable runtime data |
 
 ### Device 2 — the datalogger (linked with `via_device`)
@@ -247,6 +247,7 @@ a state — so a stale `off` is never mistaken for a real one.
 | 1 | Read-only: health, faults, BMS, power, energy, firmware, day curve, totals, config bits | ✅ shipped as `v1.0.0` |
 | 2 | `switch` for HR[179] config bits, `button`s for quick charge/discharge, `set_bit` service | ✅ shipped as `v1.1.0` |
 | 2.1 | Hardening: writes serialised so two commands cannot interleave, coordinator state in diagnostics, issue templates | ✅ shipped as `v1.2.0` |
+| 2.2 | `off_grid` flag corrected: derive it from `runtime.status & 0xC0` — the `isOffGrid` key the old code read does not exist in the API, so the flag was stuck `off` even during a real outage | ✅ shipped as `v1.2.1` |
 | 3 | Options polish, more translations | ⏳ planned |
 
 Submitting to the HACS default store is deliberately **not** planned: this integration talks to

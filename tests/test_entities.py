@@ -25,6 +25,12 @@ def is_on(key: str, data: dict) -> bool:
     return bool(BINARY_BY_KEY[key].is_on_fn(data))
 
 
+def attrs_for(key: str, data: dict) -> dict:
+    desc = BINARY_BY_KEY[key]
+    assert desc.attrs_fn is not None, f"{key} thiếu attrs_fn"
+    return desc.attrs_fn(data)
+
+
 # ── Cấu trúc bảng mô tả ────────────────────────────────────────
 
 
@@ -289,10 +295,43 @@ def test_quick_task_active_for_charge_or_discharge() -> None:
 
 
 def test_off_grid_flag() -> None:
+    """status=0xC0 (PV+pin gánh EPS) ⇒ đang chạy không lưới."""
     assert is_on("off_grid", full_dataset()) is False
     data = full_dataset()
-    data["runtime"]["isOffGrid"] = True
+    data["runtime"]["status"] = 192
     assert is_on("off_grid", data) is True
+
+
+def test_off_grid_flag_regression_isoffgrid_key() -> None:
+    """Hồi quy 2026-09-30: key `isOffGrid` KHÔNG có trong payload thật.
+
+    Bản cũ đọc key này nên cờ luôn `off` dù mất lưới. Test này khoá lại:
+    chỉ `isOffGrid` (không có `status`) ⇒ dự phòng theo vacr/fac.
+    """
+    data = full_dataset()
+    rt = data["runtime"]
+    rt.pop("status", None)
+    rt["vacr"] = 0
+    rt["fac"] = 0
+    rt["isOffGrid"] = True
+    assert is_on("off_grid", data) is True
+
+    # Có lưới (221.7 V / 50.15 Hz) mà status thiếu ⇒ KHÔNG báo mất lưới.
+    data2 = full_dataset()
+    rt2 = data2["runtime"]
+    rt2.pop("status", None)
+    rt2["vacr"] = 2217
+    rt2["fac"] = 5015
+    assert is_on("off_grid", data2) is False
+
+
+def test_off_grid_attributes_expose_evidence() -> None:
+    data = full_dataset()
+    data["runtime"].update({"status": 192, "peps": 1262, "vacr": 0, "fac": 0})
+    attrs = attrs_for("off_grid", data)
+    assert attrs["status"] == 192
+    assert attrs["eps_power_w"] == 1262
+    assert "0xC0" in attrs["note"]
 
 
 # ── Có firmware mới (caveat §9) ────────────────────────────────
