@@ -8,7 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
 from .const import (
@@ -33,29 +33,35 @@ _LOGGER = logging.getLogger(__name__)
 async def _validate(hass: HomeAssistant, data: dict[str, Any]) -> str | None:
     """Trả về error key hoặc None nếu OK."""
     serial = str(data[CONF_SERIAL]).strip().upper()
+    # Session tạm, cookie jar riêng: login chỉ để kiểm tra, không được ghi cookie
+    # JSESSIONID vào session dùng chung của HA (đè phiên của entry đang chạy).
+    session = async_create_clientsession(hass, auto_cleanup=False)
     api = LuxCloudApi(
-        async_get_clientsession(hass),
+        session,
         REGIONS.get(str(data.get(CONF_REGION, DEFAULT_REGION)).lower(), REGIONS[DEFAULT_REGION]),
         str(data[CONF_ACCOUNT]).strip(),
         str(data[CONF_PASSWORD]),
         serial,
     )
     try:
-        await api.login()
-    except LuxCloudAuthError:
-        return "invalid_auth"
-    except LuxCloudApiError:
-        return "cannot_connect"
-    except Exception:  # noqa: BLE001
-        _LOGGER.exception("luxcloud: lỗi không xác định khi đăng nhập")
-        return "unknown"
-    try:
-        plant = await api.get_plant()
-    except Exception:  # noqa: BLE001
-        return "cannot_connect"
-    if not plant:
-        return "no_device"
-    return None
+        try:
+            await api.login()
+        except LuxCloudAuthError:
+            return "invalid_auth"
+        except LuxCloudApiError:
+            return "cannot_connect"
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("luxcloud: lỗi không xác định khi đăng nhập")
+            return "unknown"
+        try:
+            plant = await api.get_plant()
+        except Exception:  # noqa: BLE001
+            return "cannot_connect"
+        if not plant:
+            return "no_device"
+        return None
+    finally:
+        session.detach()
 
 
 class LuxCloudConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -75,11 +81,15 @@ class LuxCloudConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 data = dict(user_input)
                 data[CONF_SERIAL] = serial
+                data[CONF_ACCOUNT] = str(data[CONF_ACCOUNT]).strip()
+                # Chu kỳ poll là OPTION (coordinator chỉ đọc options) — trước đây giá
+                # trị nhập ở form bị bỏ qua và luôn về mặc định.
+                scan_interval = data.pop(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
                 return self.async_create_entry(
                     title=f"LuxCloud {serial}",
                     data=data,
                     options={
-                        CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL,
+                        CONF_SCAN_INTERVAL: scan_interval,
                         CONF_ENABLE_SERIES: True,
                         CONF_ENABLE_FIRMWARE: True,
                     },
@@ -88,23 +98,27 @@ class LuxCloudConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_reauth(self, entry_data: dict[str, Any]):
         """Sai mật khẩu → yêu cầu nhập lại (giữ serial)."""
-        self._reauth_entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
-        entry = getattr(self, "_reauth_entry", None)
-        if user_input is not None and entry is not None:
-            merged = {**entry.data, **user_input}
+        entry = self._get_reauth_entry()
+        if user_input is not None:
+            merged = {
+                **entry.data,
+                **user_input,
+                CONF_ACCOUNT: str(user_input[CONF_ACCOUNT]).strip(),
+            }
             err = await _validate(self.hass, merged)
             if err:
                 errors["base"] = err
             else:
-                self.hass.config_entries.async_update_entry(entry, data=merged)
-                return self.async_abort(reason="reauth_successful")
+                # Reload entry: entry hỏng vì ConfigEntryAuthFailed KHÔNG tự thử lại,
+                # chỉ cập nhật data thì phải reload tay mới chạy lại.
+                return self.async_update_reload_and_abort(entry, data=merged)
         schema = vol.Schema(
             {
-                vol.Required(CONF_ACCOUNT, default=(entry.data.get(CONF_ACCOUNT) if entry else "")): str,
+                vol.Required(CONF_ACCOUNT, default=entry.data.get(CONF_ACCOUNT, "")): str,
                 vol.Required(CONF_PASSWORD): str,
             }
         )

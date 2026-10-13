@@ -259,6 +259,46 @@ def test_get_plant_flattens_first_inverter() -> None:
     assert plant["total_yielding_text"] == "1997.4 kWh"
 
 
+def _two_plant_payload() -> dict:
+    """Tài khoản có 2 plant; inverter của entry nằm ở plant THỨ HAI."""
+    other = fx.plant_payload(standard="AAAA")["rows"][0]
+    other.update(plantId=111, name="Nhà khác")
+    other["inverters"][0]["serialNum"] = "9999999999"
+    mine = fx.plant_payload()["rows"][0]
+    mine["inverters"][0].update(serialNum="61204F0266", datalogSn="DU00000002")
+    return {"success": True, "rows": [other, mine]}
+
+
+def test_get_plant_picks_the_plant_holding_this_serial() -> None:
+    """Không lấy bừa `rows[0]`: dongle/sự cố đọc theo plantId sẽ ra của nhà khác."""
+    api = make_api("61204f0266")
+    patch_post(api, route({const.EP_PLANT: _two_plant_payload()}))
+    plant = run(api.get_plant())
+    assert api.plant_id == 123456
+    assert plant["standard"] == "CHAA"
+    assert api.datalog_sn == "DU00000002"
+
+
+def test_get_plant_falls_back_to_first_row_without_serial_field() -> None:
+    api = make_api("0000000000")
+    patch_post(api, route({const.EP_PLANT: _two_plant_payload()}))
+    run(api.get_plant())
+    assert api.plant_id == 111
+
+
+def test_get_dongle_picks_the_row_of_this_inverter() -> None:
+    api = make_api()
+    api.plant_id = 1
+    api.datalog_sn = "DU00000002"
+    payload = fx.datalog_payload()
+    second = dict(payload["rows"][0], datalogSn="DU00000002", firmwareVersion="V9.99")
+    payload["rows"].append(second)
+    patch_post(api, route({const.EP_DATALOG: payload}))
+    dongle = run(api.get_dongle())
+    assert dongle["sn"] == "DU00000002"
+    assert dongle["firmware"] == "V9.99"
+
+
 def test_get_plant_handles_empty_rows() -> None:
     api = make_api()
     patch_post(api, route({const.EP_PLANT: {"success": True, "rows": []}}))

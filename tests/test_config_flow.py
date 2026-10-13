@@ -118,6 +118,24 @@ async def test_user_flow_creates_the_entry(hass, flow_api) -> None:
     assert result["options"][const.CONF_ENABLE_FIRMWARE] is True
 
 
+async def test_user_flow_keeps_the_chosen_scan_interval(hass, flow_api) -> None:
+    """Chu kỳ nhập ở form phải vào OPTIONS (coordinator chỉ đọc options).
+
+    Trước đây giá trị này rơi vào `data` và bị bỏ qua — luôn về 300 s.
+    """
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": "user"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {**USER_INPUT, const.CONF_ACCOUNT: "  u@example.com ", const.CONF_SCAN_INTERVAL: 120},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["options"][const.CONF_SCAN_INTERVAL] == 120
+    assert const.CONF_SCAN_INTERVAL not in result["data"]
+    assert result["data"][const.CONF_ACCOUNT] == "u@example.com"
+
+
 async def test_serial_is_normalised_before_login(hass, flow_api) -> None:
     """Người dùng gõ chữ thường vẫn phải đăng nhập bằng serial đã upper-case."""
     result = await hass.config_entries.flow.async_init(
@@ -219,3 +237,30 @@ async def test_reauth_flow_updates_the_password(hass, flow_api) -> None:
     assert result["reason"] == "reauth_successful"
     assert entry.data[const.CONF_PASSWORD] == "new-pw"
     assert entry.data[const.CONF_SERIAL] == "61204F0266", "reauth phải giữ serial"
+
+
+async def test_reauth_reloads_the_entry(hass, flow_api, monkeypatch) -> None:
+    """Entry hỏng vì ConfigEntryAuthFailed không tự thử lại → reauth xong phải reload."""
+    entry = MockConfigEntry(
+        domain=const.DOMAIN,
+        unique_id="61204F0266",
+        data={**USER_INPUT, const.CONF_SERIAL: "61204F0266"},
+    )
+    entry.add_to_hass(hass)
+    reloads: list[str] = []
+
+    async def _reload(entry_id: str) -> bool:
+        reloads.append(entry_id)
+        return True
+
+    monkeypatch.setattr(hass.config_entries, "async_reload", _reload)
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN,
+        context={"source": "reauth", "entry_id": entry.entry_id},
+    )
+    await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {const.CONF_ACCOUNT: "u@example.com", const.CONF_PASSWORD: "new-pw"},
+    )
+    await hass.async_block_till_done()
+    assert reloads == [entry.entry_id]
