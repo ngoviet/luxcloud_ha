@@ -105,11 +105,20 @@ directory and restart.
 | Password | Your LuxPower account password |
 | Inverter serial number | e.g. `61204F0266`; also visible in the app under Device → Info |
 | Region | `vn` (default), `as`, `na`, `eu2`, `ind`, `af`, `phi`, `us` — one entry per region |
-| Scan interval | Seconds between polls, 60–3600 |
+| Scan interval | Seconds between polls, 60–3600 (default 300) |
+
+Later, under **Configure** on the integration card (no restart needed):
+
+| Option | Notes |
+|---|---|
+| Scan interval | Change the polling period |
 | Enable series | Intraday power curve + yearly totals |
 | Enable firmware | Firmware catalogue lookup (always uses the `as` host) |
 
-Multiple inverters: add the integration once per serial number.
+Multiple inverters: add the integration once per serial number. Each entry keeps its own cloud
+session, so two inverters — even on two different accounts — do not log each other out. On an
+account with several plants, the integration reads the plant that actually holds the serial you
+entered.
 
 > **Region matters.** The firmware catalogue only answers on the `as` host — regional hosts
 > return zero rows. This is handled internally; the setting is only for the main API.
@@ -134,10 +143,10 @@ Multiple inverters: add the integration once per serial number.
 | `sensor.*_ma_firmware_inverter` | | Firmware code, e.g. `CHAA-000303` |
 | `sensor.*_firmware_moi_nhat` | | Newest catalogue version for this device type |
 | `sensor.*_chuoi_cong_suat_hom_nay` | | Number of intraday points (curve in attributes) |
-| `sensor.*_tong_theo_nam` | kWh | Current-year PV total (all years in attributes) |
+| `sensor.*_tong_theo_nam` | kWh | Current-year PV total (all years in attributes); starts again from 0 each January |
 | `sensor.*_bit_cau_hinh_hr_179_dang_bat` | | Count of enabled HR[179] bits (map in attributes) |
 | `sensor.*_trang_thai_quick_charge_discharge` | | Cloud-side quick charge/discharge state |
-| `sensor.*_tong_san_luong_plant` | kWh | Plant lifetime yield |
+| `sensor.*_tong_san_luong_plant` | kWh | Plant lifetime yield (converted to kWh when the cloud reports `MWh`) |
 | `switch.*_grid_peak_shaving` | | `FUNC_GRID_PEAK_SHAVING` — **writes** (see below) |
 | `switch.*_gen_peak_shaving` | | `FUNC_GEN_PEAK_SHAVING` — **writes** |
 | `switch.*_active_power_limit_mode` | | `FUNC_ACTIVE_POWER_LIMIT_MODE` — **writes** |
@@ -156,7 +165,7 @@ Multiple inverters: add the integration once per serial number.
 | `sensor.*_dongle_firmware` | Datalogger firmware, e.g. `V2.11` |
 | `sensor.*_dongle_bao_cloud_lan_cuoi` | Timestamp of the last cloud upload |
 | `sensor.*_dongle_kieu_ket_noi` | Datalogger type, e.g. `E Wi-Fi` |
-| `binary_sensor.*_dongle_mat_ket_noi` | Datalogger offline |
+| `binary_sensor.*_dongle_mat_ket_noi` | `on` = datalogger offline; shown as **Problem** / **OK** |
 
 > Entity IDs use the device name (`LuxCloud`) as a prefix, so ids read
 > `sensor.luxcloud_chu_ky_pin`. Rename devices in Home Assistant freely — the entity ids
@@ -216,9 +225,11 @@ a state — so a stale `off` is never mistaken for a real one.
   device type (e.g. `08`) while the inverter reports its own `fwVersion` (e.g. `3`). Cross-check
   the code (`CHAA-000303`) in the app before flashing anything — the `caveat` attribute records
   this warning on the entity.
-- **Account sharing.** Like the phone app, this integration logs into your cloud account. A
-  session is refreshed transparently; if you see intermittent auth errors while the app is
-  open, increase the scan interval.
+- **Account sharing.** Like the phone app, this integration logs into your cloud account. When
+  the cloud session expires, the next poll logs in again by itself — no reload needed. If the
+  password was changed, Home Assistant asks you to re-enter it and reloads the integration as
+  soon as you do. If you see intermittent auth errors while the app is open, increase the scan
+  interval.
 - **Writes go through the vendor cloud.** A write is only as reliable as the cloud→datalogger
   link: it needs the dongle online, and it takes a few seconds to show up in the reading. A
   rejected write raises an error in Home Assistant instead of silently pretending it worked.
@@ -235,6 +246,7 @@ a state — so a stale `off` is never mistaken for a real one.
 | Cannot connect during setup | Region (try the one your app uses), then confirm the inverter shows online in the app |
 | Invalid auth | Password is case sensitive; Google/Apple sign-ins need a password set first |
 | Entities unavailable | The dongle is offline — power, network or unplugged |
+| "Re-authentication required" | Password changed in the app — enter the new one in the notification; the integration reloads on its own |
 | Values frozen | Compare `binary_sensor.*_dongle_mat_ket_noi` and the last cloud report timestamp |
 | No firmware found | Device type is derived from the firmware code prefix; open an issue with your `fwCode` |
 
