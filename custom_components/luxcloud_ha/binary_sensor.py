@@ -22,7 +22,7 @@ from .device import device_info, dongle_device_info, parent_device_id
 
 @dataclass(frozen=True, kw_only=True)
 class LuxBinaryDescription(BinarySensorEntityDescription):
-    is_on_fn: Callable[[dict], bool]
+    is_on_fn: Callable[[dict], bool | None]  # None = không biết → state `unknown`
     dongle: bool = False
     attrs_fn: Callable[[dict], dict] | None = None
 
@@ -41,7 +41,7 @@ def _sub(key: str) -> Callable[[dict], dict]:
 GRID_OFF_MASK = 0xC0
 
 
-def _off_grid(d: dict) -> bool:
+def _off_grid(d: dict) -> bool | None:
     """True khi inverter đang chạy không lưới (EPS / off-grid).
 
     ⚠️ Sửa 2026-09-30: bản cũ đọc `runtime.isOffGrid` — **key này KHÔNG tồn tại**
@@ -57,6 +57,10 @@ def _off_grid(d: dict) -> bool:
             return (int(status) & GRID_OFF_MASK) != 0
         except (TypeError, ValueError):
             pass
+    # Không có số đo lưới (runtime lỗi trong khi plant vẫn trả) ⇒ KHÔNG BIẾT,
+    # không phải "mất lưới". Bản cũ coi thiếu = 0 V ⇒ báo mất điện giả.
+    if rt.get("vacr") is None and rt.get("fac") is None:
+        return None
     # Dự phòng khi cloud không trả `status`: không có AC ở ngõ vào lưới.
     try:
         vacr = float(rt.get("vacr") or 0)
@@ -78,6 +82,19 @@ def _off_grid_attrs(d: dict) -> dict:
             "dùng status & 0xC0 (bit 0x40/0x80) — xem lxp-bridge wiki §Status."
         ),
     }
+
+
+def _firmware_available(d: dict) -> bool:
+    """Catalog mới hơn fwVersion của inverter.
+
+    `get_plant` ghi `fw_version = -1` khi cloud không trả `fwVersion` — đó là
+    KHÔNG BIẾT, không phải version -1 (bản cũ: 8 > -1 ⇒ báo có firmware mới giả).
+    """
+    dev = _sub("plant")(d).get("fw_version")
+    latest = _sub("firmware")(d).get("latest_version")
+    if dev is None or latest is None or int(dev) < 0:
+        return False
+    return int(latest) > int(dev)
 
 
 def _firmware_attrs(d: dict) -> dict:
@@ -144,12 +161,7 @@ BINARY_SENSORS: tuple[LuxBinaryDescription, ...] = (
         key="firmware_available",
         name="Có firmware mới",
         device_class=BinarySensorDeviceClass.UPDATE,
-        is_on_fn=lambda d: (
-            (_sub("plant")(d).get("fw_version") is not None)
-            and (_sub("firmware")(d).get("latest_version") is not None)
-            and int(_sub("firmware")(d).get("latest_version", -1))
-            > int(_sub("plant")(d).get("fw_version", 0))
-        ),
+        is_on_fn=_firmware_available,
         attrs_fn=_firmware_attrs,
     ),
     LuxBinaryDescription(
@@ -201,11 +213,12 @@ class LuxCloudBinarySensor(CoordinatorEntity[LuxCloudCoordinator], BinarySensorE
         )
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         try:
-            return bool(self.entity_description.is_on_fn(self.coordinator.data or {}))
+            value = self.entity_description.is_on_fn(self.coordinator.data or {})
         except (TypeError, ValueError):
             return False
+        return None if value is None else bool(value)
 
     @property
     def extra_state_attributes(self) -> dict | None:

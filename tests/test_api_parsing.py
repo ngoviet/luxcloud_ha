@@ -390,10 +390,38 @@ def test_get_battery_converts_units() -> None:
     assert battery["status"] == "Charging"
 
 
-def test_get_battery_delta_is_zero_when_a_cell_reading_is_missing() -> None:
+def test_get_battery_delta_is_none_when_a_cell_reading_is_missing() -> None:
+    """Cell = 0 mV là BMS không báo — lệch cell phải `unknown`, không phải 0 mV."""
     api = make_api()
     patch_post(api, route({const.EP_BATTERY: fx.battery_payload(cell_min=0)}))
-    assert run(api.get_battery())["cell_delta_mv"] == 0
+    battery = run(api.get_battery())
+    assert battery["cell_min_mv"] is None
+    assert battery["cell_delta_mv"] is None
+
+
+def test_get_battery_missing_fields_are_none_not_zero() -> None:
+    """`success:true` nhưng BMS không báo → None, KHÔNG 0.
+
+    `cycles` nuôi sensor TOTAL_INCREASING: N → 0 → N bị HA hiểu là reset và cộng
+    N vào tổng thống kê dài hạn.
+    """
+    api = make_api()
+    patch_post(api, route({const.EP_BATTERY: {"success": True}}))
+    battery = run(api.get_battery())
+    for key in ("cycles", "cell_max_mv", "cell_min_mv", "cell_delta_mv",
+                "cell_max_temp_c", "cell_min_temp_c"):
+        assert battery[key] is None, key
+
+
+def test_get_battery_keeps_real_zero_cycles_and_temperature() -> None:
+    """Pin mới (0 chu kỳ) và 0 °C là số đo thật — không được thành None."""
+    api = make_api()
+    payload = {**fx.battery_payload(temp_max=0, temp_min=0), "bmsCycleCnt": 0}
+    patch_post(api, route({const.EP_BATTERY: payload}))
+    battery = run(api.get_battery())
+    assert battery["cycles"] == 0
+    assert battery["cell_max_temp_c"] == 0
+    assert battery["cell_min_temp_c"] == 0
 
 
 def test_get_battery_has_no_soh_field() -> None:
@@ -662,6 +690,9 @@ def test_fetch_all_carries_on_when_endpoints_fail() -> None:
     assert data["dongle"] == {}
     assert data["battery"] == {}
     assert data["health"]["cloud_ok"] is False
+    # Thiếu runtime ⇒ công suất KHÔNG BIẾT, không phải 0 W (điểm 0 giả trong lịch sử).
+    assert data["health"]["pinv"] is None
+    assert data["health"]["prec"] is None
 
 
 # ── refreshInputData ───────────────────────────────────────────

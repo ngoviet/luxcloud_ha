@@ -56,6 +56,22 @@ async def test_entities_recover_when_the_cloud_comes_back(hass, patched_api) -> 
         assert hass.states.get(entity_id).state == expected, entity_id
 
 
+async def test_off_grid_is_unknown_when_only_runtime_fails(hass, patched_api) -> None:
+    """Runtime lỗi riêng (plant vẫn trả ⇒ poll vẫn được nhận): cờ mất lưới phải
+    `unknown`, KHÔNG `on` — `on` ở đây là báo mất điện giả cho automation."""
+    await setup_luxcloud(hass)
+    off_grid = "binary_sensor.luxcloud_dang_chay_khong_luoi_eps"
+    assert hass.states.get(off_grid).state == "off"
+
+    fake = patched_api.instances[-1]
+    fake.data["runtime"] = {}
+    fake.data["health"]["pinv"] = fake.data["health"]["prec"] = None
+    await _refresh(hass)
+
+    assert hass.states.get(off_grid).state == "unknown"
+    assert hass.states.get("sensor.luxcloud_ngo_ra_ac_pinv").state == "unknown"
+
+
 @pytest.mark.no_fail_on_log_exception
 async def test_last_good_data_is_kept_for_the_next_successful_poll(hass, patched_api) -> None:
     """Lỗi tạm thời không được xoá dữ liệu — nếu không, lần poll sau sẽ trắng."""
