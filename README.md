@@ -262,6 +262,7 @@ a state — so a stale `off` is never mistaken for a real one.
 | 2.2 | `off_grid` flag corrected: derive it from `runtime.status & 0xC0` — the `isOffGrid` key the old code read does not exist in the API, so the flag was stuck `off` even during a real outage | ✅ shipped as `v1.2.1` |
 | 2.3 | Reliability fixes: log back in automatically when the cloud session expires (before, polling failed until a manual reload); a private cookie jar per entry; pick the plant/dongle that actually holds the configured serial on multi-plant accounts; reauth reloads the entry; the scan interval chosen during setup is honoured; `dongle_mat_ket_noi` shows "Problem" instead of an inverted "Connected"; yearly total no longer records negative energy at New Year; plant total understands `MWh`; a 401 re-logs in before asking for the password; reads run in parallel (max 4 in flight) and disabled firmware/series data is no longer fetched | ✅ `v1.2.2` |
 | 2.4 | Missing data is `unknown`, not a fake value: the off-grid flag no longer turns `on` when only the runtime request fails; "new firmware" no longer turns `on` when the inverter's `fwVersion` is missing; `pinv`/`prec` and the BMS sensors (cycles, cell voltages, cell delta, cell temperatures) no longer record `0` when the cloud omits them — a fake 0 on the `TOTAL_INCREASING` cycle counter was read as a meter reset and corrupted long-term statistics | ✅ `v1.2.3` |
+| 2.5 | Writes survive an expired cloud session: switches, buttons and `set_bit` log back in and resend once instead of failing until the next poll, and a wrong password during a write raises a readable error and opens the reauth flow (it used to surface as "Unknown error"); setup and reauth reject a serial the account does not list (it used to be accepted and leave every inverter entity empty); after midnight the "today" power curve no longer shows yesterday's data; more missing-data cases are `unknown` instead of a fake value — dongle-lost, quick-task state/flag, the config-bit count, and the latest catalogue firmware (was `-1`) | ✅ `v1.2.4` |
 | 3 | Options polish, more translations | ⏳ planned |
 
 Submitting to the HACS default store is deliberately **not** planned: this integration talks to
@@ -295,7 +296,7 @@ All tooling runs from the repository root and needs no third-party packages beyo
 
 ### Tests
 
-`tests/` holds 298 tests. Besides the read path (cloud-response normalisation — mV, ×10,
+`tests/` holds 321 tests. Besides the read path (cloud-response normalisation — mV, ×10,
 0.1 kWh, the `"False"` string booleans — every entity's value function, the coordinator's
 slow-key cache, the config/reauth flows, and a full setup asserting every entity id and the
 dongle→inverter device link), the write path is covered by pressing the **actual Home

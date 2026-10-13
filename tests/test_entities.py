@@ -248,9 +248,22 @@ def test_config_bits_counts_enabled_bits() -> None:
 
 def test_config_bits_zero_when_none_enabled() -> None:
     data = full_dataset()
-    data["bits"] = {}
+    data["bits"] = {"A": False, "B": False}
     assert value("config_bits", data) == 0
+
+
+def test_config_bits_unknown_when_remote_read_failed() -> None:
+    """`get_config_bits` trả `{}` khi cloud lỗi — đó là KHÔNG BIẾT, không phải 0 bit."""
+    data = full_dataset()
+    data["bits"] = {}
+    assert value("config_bits", data) is None
     assert SENSOR_BY_KEY["config_bits"].attrs_fn(data) == {"bits": {}}
+
+
+def test_quick_state_unknown_when_status_failed() -> None:
+    data = full_dataset()
+    data["quick"] = {}
+    assert value("quick_state", data) is None
 
 
 @pytest.mark.parametrize(
@@ -275,7 +288,8 @@ def test_quick_state_resolution(quick: dict, expected: str) -> None:
 def test_dongle_lost_flag() -> None:
     assert is_on("dongle_lost", full_dataset(lost="False")) is False
     assert is_on("dongle_lost", full_dataset(lost="True")) is True
-    assert is_on("dongle_lost", {}) is False
+    # datalog/list lỗi ⇒ không biết (bản cũ báo `off` = "dongle ổn").
+    assert BINARY_BY_KEY["dongle_lost"].is_on_fn({}) is None
 
 
 def test_event_active_is_false_for_closed_events() -> None:
@@ -312,6 +326,7 @@ def test_cloud_data_ok_requires_both_flags() -> None:
 
 def test_quick_task_active_for_charge_or_discharge() -> None:
     assert is_on("quick_task_active", full_dataset()) is False
+    assert BINARY_BY_KEY["quick_task_active"].is_on_fn({"quick": {}}) is None
     data = full_dataset()
     data["quick"]["charging"] = True
     assert is_on("quick_task_active", data) is True

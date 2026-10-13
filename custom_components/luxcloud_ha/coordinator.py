@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import (
     TimestampDataUpdateCoordinator,
     UpdateFailed,
@@ -64,8 +65,9 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
         slow = (want_firmware or want_series) and (
             self._tick == 1 or self._tick % SLOW_EVERY == 0
         )
+        today = dt_util.now().strftime("%Y-%m-%d")
         try:
-            data = await self._async_fetch(slow, want_firmware, want_series)
+            data = await self._async_fetch(slow, want_firmware, want_series, today)
         except LuxCloudAuthError as err:
             self.failed_updates += 1
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -86,6 +88,13 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
             elif self._cache.get(key):
                 data[key] = self._cache[key]
 
+        # Chuỗi "hôm nay" chỉ lấy ở nhịp chậm: qua nửa đêm, bản cache là của
+        # HÔM QUA nhưng vẫn được trình bày là hôm nay cho tới nhịp chậm kế tiếp
+        # (tới ~30 phút; lâu hơn nếu cloud chưa có điểm nào của ngày mới).
+        if (data.get("day_curve") or {}).get("date") not in (None, today):
+            data.pop("day_curve")
+            self._cache.pop("day_curve", None)
+
         # khoá chậm có thể bị tắt trong options
         if not want_firmware:
             data.pop("firmware", None)
@@ -94,7 +103,27 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
             data.pop("total_years", None)
         return data
 
-    async def _async_fetch(self, slow: bool, firmware: bool, series: bool) -> dict:
+    async def async_write(self, write: Awaitable[bool], what: str) -> bool:
+        """Chạy một lệnh GHI của api; trả kết quả cloud (`success`).
+
+        Đường ghi tự đăng nhập lại khi phiên hết hạn, nên có thể ném lỗi của
+        `login()`. Nếu để exception thô của api lọt ra thì UI chỉ hiện "Unknown
+        error" — nên đổi sang `HomeAssistantError` có nghĩa, và sai mật khẩu thì mở
+        luôn reauth flow như khi poll.
+        """
+        try:
+            return await write
+        except LuxCloudAuthError as err:
+            self.config_entry.async_start_reauth(self.hass)
+            raise HomeAssistantError(
+                f"LuxCloud từ chối đăng nhập khi ghi {what} — cần đăng nhập lại: {err}"
+            ) from err
+        except LuxCloudApiError as err:
+            raise HomeAssistantError(f"LuxCloud không phản hồi khi ghi {what}: {err}") from err
+
+    async def _async_fetch(
+        self, slow: bool, firmware: bool, series: bool, date_text: str
+    ) -> dict:
         """Một lần poll; phiên hết hạn thì đăng nhập lại rồi thử ĐÚNG một lần nữa.
 
         Phiên JSESSIONID hết hạn thì cloud trả trang login/`success=false` → mọi
@@ -102,8 +131,6 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
         là PHIÊN hỏng, chưa chắc mật khẩu sai, nên cũng đăng nhập lại trước.
         Chỉ khi chính `login()` bị từ chối mới là sai mật khẩu thật (→ reauth).
         """
-        date_text = dt_util.now().strftime("%Y-%m-%d")
-
         async def fetch() -> dict:
             return await self.api.async_fetch_all(
                 slow=slow, date_text=date_text, firmware=firmware, series=series

@@ -80,6 +80,25 @@ def _kwh(value):
     return round(number * _KWH_SCALE.get(unit, 1.0), 3)
 
 
+def _quick_state(d: dict) -> str | None:
+    """Trạng thái task quick; getStatusInfo lỗi ⇒ `None` (không phải `idle`)."""
+    quick = _sub("quick")(d)
+    if not quick:
+        return None
+    return (
+        quick.get("charge_status")
+        or quick.get("discharge_status")
+        or ("charging" if quick.get("charging") else None)
+        or ("discharging" if quick.get("discharging") else "idle")
+    )
+
+
+def _bits_on(d: dict) -> int | None:
+    """Số bit đang bật; remoteRead lỗi ⇒ `None` (không phải 0 bit)."""
+    bits = _sub("bits")(d)
+    return sum(1 for v in bits.values() if v) if bits else None
+
+
 SENSORS: tuple[LuxSensorDescription, ...] = (
     # ── Dongle (device riêng) ─────────────────────────────────
     LuxSensorDescription(
@@ -286,7 +305,7 @@ SENSORS: tuple[LuxSensorDescription, ...] = (
         name="Bit cấu hình HR[179] đang bật",
         icon="mdi:tune-variant",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: sum(1 for v in _sub("bits")(d).values() if v),
+        value_fn=_bits_on,
         attrs_fn=lambda d: {"bits": _sub("bits")(d)},
     ),
     LuxSensorDescription(
@@ -294,12 +313,7 @@ SENSORS: tuple[LuxSensorDescription, ...] = (
         name="Trạng thái quick charge/discharge",
         icon="mdi:battery-sync-outline",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda d: (
-            _sub("quick")(d).get("charge_status")
-            or _sub("quick")(d).get("discharge_status")
-            or ("charging" if _sub("quick")(d).get("charging") else None)
-            or ("discharging" if _sub("quick")(d).get("discharging") else "idle")
-        ),
+        value_fn=_quick_state,
         attrs_fn=lambda d: _sub("quick")(d),
     ),
     LuxSensorDescription(

@@ -57,7 +57,9 @@ async def _validate(hass: HomeAssistant, data: dict[str, Any]) -> str | None:
             plant = await api.get_plant()
         except Exception:  # noqa: BLE001
             return "cannot_connect"
-        if not plant:
+        # Tài khoản có plant chưa đủ: serial gõ sai vẫn "qua" và tạo một entry mà
+        # runtime/pin/bit đều rỗng. Cloud có liệt kê serial thì phải khớp.
+        if not plant or api.serial_in_account is False:
             return "no_device"
         return None
     finally:

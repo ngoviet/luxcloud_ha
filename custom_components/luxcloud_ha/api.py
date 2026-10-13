@@ -128,6 +128,10 @@ class LuxCloudApi:
         # Dongle gắn với inverter này (nếu getPlantList trả) — để chọn đúng dòng
         # trong datalog/list khi plant có nhiều dongle.
         self.datalog_sn: str | None = None
+        # Serial của entry có nằm trong getPlantList không: True = thấy, False =
+        # cloud có liệt kê serial nhưng KHÔNG có serial này (gõ sai / tài khoản
+        # khác), None = cloud không trả field serial nên không kết luận được.
+        self.serial_in_account: bool | None = None
         # Khoá tuần tự hoá ĐƯỜNG GHI. HA có thể phát nhiều lệnh ghi cùng lúc
         # (bấm 2 switch liền nhau, hoặc switch + service set_bit), và cloud không
         # bảo đảm thứ tự giữa các request rời. `asyncio.Lock` phát khoá theo FIFO,
@@ -206,6 +210,7 @@ class LuxCloudApi:
         if not rows:
             return {}
         plant, inv = self._pick_plant(rows)
+        self.serial_in_account = self._serial_listed(rows)
         self.plant_id = _i(plant.get("plantId"), 0) or None
         self.datalog_sn = str(inv.get("datalogSn") or "").strip().upper() or None
         return {
@@ -239,6 +244,16 @@ class LuxCloudApi:
                     return plant, inv
         plant = rows[0]
         return plant, (plant.get("inverters") or [{}])[0]
+
+    def _serial_listed(self, rows: list) -> bool | None:
+        serials = {
+            str(inv.get("serialNum") or inv.get("sn") or "").strip().upper()
+            for plant in rows
+            for inv in plant.get("inverters") or []
+        } - {""}
+        if not serials:
+            return None
+        return self.serial in serials
 
     async def get_dongle(self) -> dict:
         if not self.plant_id:
@@ -353,6 +368,33 @@ class LuxCloudApi:
         return {k: bool(r[k]) for k in CONFIG_BIT_KEYS if k in r}
 
     # ── Đường GHI (Phase 2) ────────────────────────────────────
+    async def _post_write(self, endpoint: str, params: dict) -> dict:
+        """POST một lệnh ghi; phiên hỏng thì đăng nhập lại và gửi lại ĐÚNG một lần.
+
+        Phiên JSESSIONID hết hạn ⇒ cloud trả trang login (không phải JSON) hoặc
+        HTTP 401 — lệnh chưa hề được thực thi. Không xử lý thì lệnh ghi đầu tiên
+        sau khi phiên hết hạn luôn hỏng (báo "cloud từ chối") cho tới lần poll sau.
+        `success:false` là cloud TỪ CHỐI thật ⇒ không gửi lại.
+
+        `_post` trả `None` cho cả lỗi mạng: nếu mạng đứt thì `login()` cũng hỏng
+        và lỗi nổi lên, không gửi lại. Hiếm hơn — request đã tới cloud nhưng mất
+        phản hồi — thì gửi lại: đặt bit là đặt GIÁ TRỊ (idempotent); quick
+        charge/discharge là MỘT task mỗi inverter (`hasUnclosedQuick*Task`), nên
+        start lần hai không tạo task thứ hai (tệ nhất là báo lỗi dù task đã chạy).
+
+        `login()` ném `LuxCloudAuthError` (sai mật khẩu) / `LuxCloudApiError`
+        (cloud không phản hồi) — caller phải đổi sang lỗi của HA.
+        """
+        try:
+            r = await self._post(endpoint, params)
+        except LuxCloudAuthError:
+            r = None
+        if r is None:
+            _LOGGER.debug("luxcloud: lệnh ghi %s không có phản hồi — đăng nhập lại rồi gửi lại", endpoint)
+            await self.login()
+            r = await self._post(endpoint, params)
+        return r or {}
+
     async def set_config_bit(self, function_param: str, enable: bool) -> bool:
         """Bật/tắt một bit cấu hình qua `remoteSet/functionControl`.
 
@@ -363,7 +405,7 @@ class LuxCloudApi:
         theo đúng thứ tự được gọi, không đan xen.
         """
         async with self._write_lock:
-            r = await self._post(
+            r = await self._post_write(
                 EP_FUNCTION_CONTROL,
                 {
                     "inverterSn": self.serial,
@@ -372,7 +414,7 @@ class LuxCloudApi:
                     "clientType": "APP",
                     "remoteSetType": REMOTE_SET_TYPE,
                 },
-            ) or {}
+            )
             if not r.get("success"):
                 _LOGGER.warning(
                     "luxcloud: đặt bit %s=%s thất bại: %s",
@@ -395,10 +437,10 @@ class LuxCloudApi:
         if op not in QUICK_OPS:
             raise ValueError(f"op không hợp lệ: {op!r}")
         async with self._write_lock:
-            r = await self._post(
+            r = await self._post_write(
                 EP_QUICK_ACTION.format(action=action, op=op),
                 {"inverterSn": self.serial, "clientType": "APP"},
-            ) or {}
+            )
             if not r.get("success"):
                 _LOGGER.warning(
                     "luxcloud: %s/%s thất bại: %s",
@@ -468,11 +510,13 @@ class LuxCloudApi:
                 x for x in rows if pref and str(x.get("standard", "")).lower().startswith(pref)
             ]
             use = matched or rows
+            latest = max([_ver(x) for x in use] or [-1])
             cand = {
                 "device_type": dev,
                 "count": len(rows),
                 "matched": len(matched),
-                "latest_version": max([_ver(x) for x in use] or [-1]),
+                # Không đọc được version nào ⇒ KHÔNG BIẾT, không phải version -1.
+                "latest_version": latest if latest >= 0 else None,
                 "items": [
                     {
                         "file": x.get("fileName", ""),

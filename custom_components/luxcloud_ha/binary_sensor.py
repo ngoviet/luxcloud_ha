@@ -70,6 +70,22 @@ def _off_grid(d: dict) -> bool | None:
     return not (vacr >= 100 or fac >= 45)
 
 
+def _dongle_lost(d: dict) -> bool | None:
+    """Dongle mất kết nối; datalog/list lỗi (không có dòng nào) ⇒ KHÔNG BIẾT.
+
+    Bản cũ coi thiếu dữ liệu = `off` ⇒ đúng lúc cloud lỗi lại báo "dongle ổn".
+    """
+    dongle = _sub("dongle")(d)
+    return bool(dongle.get("lost")) if dongle else None
+
+
+def _quick_active(d: dict) -> bool | None:
+    quick = _sub("quick")(d)
+    if not quick:
+        return None
+    return bool(quick.get("charging")) or bool(quick.get("discharging"))
+
+
 def _off_grid_attrs(d: dict) -> dict:
     rt = _sub("runtime")(d)
     return {
@@ -129,7 +145,7 @@ BINARY_SENSORS: tuple[LuxBinaryDescription, ...] = (
         # không vỡ) và hiển thị đúng nghĩa "có sự cố".
         device_class=BinarySensorDeviceClass.PROBLEM,
         dongle=True,
-        is_on_fn=lambda d: bool(_sub("dongle")(d).get("lost")),
+        is_on_fn=_dongle_lost,
     ),
     LuxBinaryDescription(
         key="event_active",
@@ -153,8 +169,7 @@ BINARY_SENSORS: tuple[LuxBinaryDescription, ...] = (
         key="quick_task_active",
         name="Đang chạy quick charge/discharge",
         icon="mdi:battery-sync-outline",
-        is_on_fn=lambda d: bool(_sub("quick")(d).get("charging"))
-        or bool(_sub("quick")(d).get("discharging")),
+        is_on_fn=_quick_active,
         attrs_fn=lambda d: _sub("quick")(d),
     ),
     LuxBinaryDescription(
