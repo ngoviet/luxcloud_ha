@@ -107,7 +107,9 @@ class LuxCloudSwitch(CoordinatorEntity[LuxCloudCoordinator], SwitchEntity):
 
     async def _async_write(self, enable: bool) -> None:
         param = self.entity_description.function_param
-        if not await self.coordinator.api.set_config_bit(param, enable):
+        if not await self.coordinator.async_write(
+            self.coordinator.api.set_config_bit(param, enable), param
+        ):
             raise HomeAssistantError(
                 f"LuxCloud không đặt được {param} = {enable} (cloud từ chối). "
                 "Xem log để biết mã lỗi."

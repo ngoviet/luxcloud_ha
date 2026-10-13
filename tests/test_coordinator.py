@@ -301,3 +301,33 @@ async def test_disabled_groups_are_not_requested(hass) -> None:
     coordinator = _coordinator(hass, api, _entry(**{CONF_ENABLE_FIRMWARE: False}))
     await coordinator._async_update_data()
     assert api.fetch_kwargs[0] == {"firmware": False, "series": True}
+
+
+class _DatedCurveApi(_StubApi):
+    """Như API thật: chuỗi ngày gắn với `date_text` được hỏi, chỉ có ở nhịp chậm."""
+
+    async def async_fetch_all(self, slow: bool, date_text: str, **kwargs) -> dict:
+        self.calls.append(slow)
+        data = dict(BASE_DATA)
+        if slow:
+            data["day_curve"] = {"date": date_text, "count": 3, "points": []}
+        return data
+
+
+async def test_todays_curve_is_kept_between_fast_ticks(hass) -> None:
+    coordinator = _coordinator(hass, _DatedCurveApi(), _entry())
+    await coordinator._async_update_data()
+    data = await coordinator._async_update_data()
+    assert data["day_curve"]["count"] == 3
+
+
+async def test_yesterdays_curve_is_dropped_after_midnight(hass) -> None:
+    """Qua nửa đêm, chuỗi cache là của HÔM QUA — không được trình bày là hôm nay."""
+    coordinator = _coordinator(hass, _DatedCurveApi(), _entry())
+    await coordinator._async_update_data()
+    coordinator._cache["day_curve"] = {"date": "2000-01-01", "count": 3, "points": []}
+
+    data = await coordinator._async_update_data()  # tick nhanh, không lấy chuỗi mới
+
+    assert "day_curve" not in data
+    assert "day_curve" not in coordinator._cache

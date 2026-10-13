@@ -119,9 +119,12 @@ class LuxCloudQuickButton(CoordinatorEntity[LuxCloudCoordinator], ButtonEntity):
 
     async def async_press(self) -> None:
         desc = self.entity_description
-        if not await self.coordinator.api.set_quick(desc.action, desc.op):
+        what = f"{desc.action}/{desc.op}"
+        if not await self.coordinator.async_write(
+            self.coordinator.api.set_quick(desc.action, desc.op), what
+        ):
             raise HomeAssistantError(
-                f"LuxCloud không gửi được {desc.action}/{desc.op} (cloud từ chối). "
+                f"LuxCloud không gửi được {what} (cloud từ chối). "
                 "Xem log để biết mã lỗi."
             )
         if CONFIG_WRITE_SETTLE:

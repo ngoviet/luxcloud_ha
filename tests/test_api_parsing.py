@@ -286,6 +286,28 @@ def test_get_plant_falls_back_to_first_row_without_serial_field() -> None:
     assert api.plant_id == 111
 
 
+def test_serial_in_account_when_the_cloud_lists_this_serial() -> None:
+    api = make_api("61204f0266")
+    patch_post(api, route({const.EP_PLANT: _two_plant_payload()}))
+    run(api.get_plant())
+    assert api.serial_in_account is True
+
+
+def test_serial_not_in_account_when_the_cloud_lists_only_other_serials() -> None:
+    """Serial gõ sai: getPlantList có serial nhưng không có serial này."""
+    api = make_api("0000000000")
+    patch_post(api, route({const.EP_PLANT: _two_plant_payload()}))
+    run(api.get_plant())
+    assert api.serial_in_account is False
+
+
+def test_serial_in_account_unknown_without_serial_fields() -> None:
+    api = make_api()
+    patch_post(api, route({const.EP_PLANT: fx.plant_payload()}))
+    run(api.get_plant())
+    assert api.serial_in_account is None
+
+
 def test_get_dongle_picks_the_row_of_this_inverter() -> None:
     api = make_api()
     api.plant_id = 1
@@ -604,6 +626,14 @@ def test_get_firmware_latest_version_is_max_across_axes() -> None:
     assert run(api.get_firmware("CHAA"))["latest_version"] == 8
 
 
+def test_get_firmware_without_any_version_is_unknown_not_minus_one() -> None:
+    """Không đọc được v1/v2/v3 ⇒ `None` (sensor `unknown`), không phải `-1`."""
+    api = make_api()
+    rows = {"rows": [{"standard": "CHAA", "fileName": "x.bin"}]}
+    patch_post(api, route({const.EP_FIRMWARE_BY_TYPE: rows}))
+    assert run(api.get_firmware("CHAA"))["latest_version"] is None
+
+
 def test_get_firmware_sends_the_app_platform_params() -> None:
     """Tham số học từ APK: platform/versionCode/clientType bắt buộc."""
     api = make_api()
@@ -771,10 +801,78 @@ def test_set_config_bit_returns_false_when_cloud_rejects() -> None:
     assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is False
 
 
-def test_set_config_bit_returns_false_without_a_response() -> None:
+def test_write_without_a_response_and_failed_relogin_raises() -> None:
+    """Không phản hồi + đăng nhập lại cũng không được ⇒ cloud chết, báo lỗi rõ."""
     api = make_api()
-    patch_post(api, route({const.EP_FUNCTION_CONTROL: None}))
+    patch_post(api, route({const.EP_FUNCTION_CONTROL: None, const.EP_LOGIN: None}))
+    with pytest.raises(LuxCloudApiError):
+        run(api.set_config_bit("FUNC_RSD_DISABLE", True))
+
+
+def _expired_session_then(endpoint: str, result: dict, *, first: str = "none"):
+    """Lần ghi đầu: phiên hết hạn (`None` = trang login/HTML, hoặc 401); sau login thì OK."""
+    state = {"logged_in": False}
+
+    def handler(ep, params, base):
+        if ep == const.EP_LOGIN:
+            state["logged_in"] = True
+            return {"success": True, "userId": 42}
+        if ep == endpoint and not state["logged_in"]:
+            if first == "401":
+                raise LuxCloudAuthError("HTTP 401")
+            return None
+        return result if ep == endpoint else None
+
+    return handler
+
+
+@pytest.mark.parametrize("first", ["none", "401"])
+def test_set_config_bit_relogs_in_and_resends_once_when_the_session_expired(first: str) -> None:
+    api = make_api()
+    calls = patch_post(
+        api, _expired_session_then(const.EP_FUNCTION_CONTROL, {"success": True}, first=first)
+    )
+    assert run(api.set_config_bit("FUNC_GRID_PEAK_SHAVING", True)) is True
+    assert [c[0] for c in calls] == [
+        const.EP_FUNCTION_CONTROL,
+        const.EP_LOGIN,
+        const.EP_FUNCTION_CONTROL,
+    ]
+
+
+def test_set_quick_relogs_in_and_resends_once_when_the_session_expired() -> None:
+    api = make_api()
+    ep = "/web/config/quickCharge/stop"
+    calls = patch_post(api, _expired_session_then(ep, {"success": True}))
+    assert run(api.set_quick(const.QUICK_CHARGE, "stop")) is True
+    assert [c[0] for c in calls] == [ep, const.EP_LOGIN, ep]
+
+
+def test_write_is_not_resent_when_the_cloud_rejects_it() -> None:
+    """`success:false` là từ chối THẬT — không đăng nhập lại, không gửi lại."""
+    api = make_api()
+    calls = patch_post(api, route({const.EP_FUNCTION_CONTROL: {"success": False, "msg": "x"}}))
     assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is False
+    assert [c[0] for c in calls] == [const.EP_FUNCTION_CONTROL]
+
+
+def test_write_relogin_with_a_wrong_password_raises_auth_error() -> None:
+    api = make_api()
+    patch_post(
+        api,
+        route({const.EP_FUNCTION_CONTROL: None, const.EP_LOGIN: {"success": False, "msg": "sai"}}),
+    )
+    with pytest.raises(LuxCloudAuthError):
+        run(api.set_config_bit("FUNC_RSD_DISABLE", True))
+
+
+def test_write_still_failing_after_relogin_returns_false() -> None:
+    api = make_api()
+    calls = patch_post(
+        api, route({const.EP_FUNCTION_CONTROL: None, const.EP_LOGIN: {"success": True}})
+    )
+    assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is False
+    assert [c[0] for c in calls].count(const.EP_FUNCTION_CONTROL) == 2
 
 
 # ── đường GHI: quick charge / discharge ────────────────────────

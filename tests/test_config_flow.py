@@ -23,6 +23,7 @@ class _FakeApi:
 
     login_error: Exception | None = None
     plant: dict | None = None
+    serial_in_account: bool | None = None
     instances: list["_FakeApi"] = []
 
     def __init__(self, session, base_url, account, password, serial) -> None:
@@ -47,10 +48,12 @@ def flow_api(monkeypatch):
     _FakeApi.instances.clear()
     _FakeApi.login_error = None
     _FakeApi.plant = None
+    _FakeApi.serial_in_account = None
     monkeypatch.setattr("custom_components.luxcloud_ha.config_flow.LuxCloudApi", _FakeApi)
     yield _FakeApi
     _FakeApi.login_error = None
     _FakeApi.plant = None
+    _FakeApi.serial_in_account = None
 
 
 # ── Schema ─────────────────────────────────────────────────────
@@ -183,6 +186,27 @@ async def test_unknown_serial_reports_no_device(hass, flow_api) -> None:
     )
     result = await hass.config_entries.flow.async_configure(result["flow_id"], dict(USER_INPUT))
     assert result["errors"] == {"base": "no_device"}
+
+
+async def test_serial_missing_from_the_account_reports_no_device(hass, flow_api) -> None:
+    """Tài khoản có plant nhưng cloud liệt kê serial KHÁC → serial gõ sai."""
+    flow_api.serial_in_account = False
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": "user"}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], dict(USER_INPUT))
+    assert result["errors"] == {"base": "no_device"}
+
+
+@pytest.mark.parametrize("listed", [True, None])
+async def test_serial_listed_or_unknown_is_accepted(hass, flow_api, listed) -> None:
+    """`None` = cloud không trả field serial → không đủ căn cứ để chặn."""
+    flow_api.serial_in_account = listed
+    result = await hass.config_entries.flow.async_init(
+        const.DOMAIN, context={"source": "user"}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], dict(USER_INPUT))
+    assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
 async def test_adding_the_same_serial_twice_aborts(hass, flow_api) -> None:

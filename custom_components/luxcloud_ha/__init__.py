@@ -105,7 +105,9 @@ async def _async_handle_set_bit(hass: HomeAssistant, call: ServiceCall) -> None:
     enable: bool = call.data[ATTR_ENABLE]
     for entry in await _async_entries_for_call(hass, call):
         coordinator: LuxCloudCoordinator = entry.runtime_data
-        if not await coordinator.api.set_config_bit(function, enable):
+        if not await coordinator.async_write(
+            coordinator.api.set_config_bit(function, enable), function
+        ):
             raise HomeAssistantError(
                 f"LuxCloud không đặt được {function} = {enable} trên {entry.title} (cloud từ chối)."
             )

@@ -359,6 +359,8 @@ class FakeLuxCloudApi:
     quick_write_result = True
     fetch_error: Exception | None = None
     login_error: Exception | None = None
+    # Lỗi `login()` lọt ra từ đường ghi (đăng nhập lại khi phiên hết hạn).
+    write_error: Exception | None = None
 
     def __init__(self, session, base_url, account, password, serial) -> None:
         self.session = session
@@ -388,10 +390,16 @@ class FakeLuxCloudApi:
         self.fetch_calls.append(slow)
         if FakeLuxCloudApi.fetch_error is not None:
             raise FakeLuxCloudApi.fetch_error
-        return copy.deepcopy(self.data)
+        data = copy.deepcopy(self.data)
+        # API thật luôn gắn chuỗi ngày với đúng `date_text` được hỏi.
+        if data.get("day_curve"):
+            data["day_curve"]["date"] = date_text
+        return data
 
     async def set_config_bit(self, function_param: str, enable: bool) -> bool:
         self.bit_writes.append((function_param, enable))
+        if FakeLuxCloudApi.write_error is not None:
+            raise FakeLuxCloudApi.write_error
         if not FakeLuxCloudApi.bit_write_result:
             return False
         self.data.setdefault("bits", {})[function_param] = enable
@@ -399,6 +407,8 @@ class FakeLuxCloudApi:
 
     async def set_quick(self, action: str, op: str) -> bool:
         self.quick_writes.append((action, op))
+        if FakeLuxCloudApi.write_error is not None:
+            raise FakeLuxCloudApi.write_error
         return FakeLuxCloudApi.quick_write_result
 
 
@@ -410,6 +420,7 @@ def patched_api(monkeypatch):
     FakeLuxCloudApi.quick_write_result = True
     FakeLuxCloudApi.fetch_error = None
     FakeLuxCloudApi.login_error = None
+    FakeLuxCloudApi.write_error = None
     monkeypatch.setattr("custom_components.luxcloud_ha.LuxCloudApi", FakeLuxCloudApi)
     return FakeLuxCloudApi
 

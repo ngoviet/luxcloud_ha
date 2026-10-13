@@ -460,3 +460,56 @@ async def test_set_bit_service_rejects_a_target_whose_entry_is_unloaded(
     assert not isinstance(err.value, AttributeError)
     assert api.bit_writes == []
 
+
+
+# ── Lỗi đăng nhập/mạng trên đường ghi ──────────────────────────
+#
+# Đường ghi tự đăng nhập lại khi phiên hết hạn, nên `login()` có thể ném lỗi
+# ngay giữa lệnh ghi. Exception thô của api mà lọt ra thì UI chỉ hiện
+# "Unknown error"; phải là `HomeAssistantError`, và sai mật khẩu thì mở reauth.
+
+WRITE_CALLS = [
+    ("switch", "turn_on", {"entity_id": "switch.luxcloud_grid_peak_shaving"}),
+    ("button", "press", {"entity_id": "button.luxcloud_quick_charge_start"}),
+    (DOMAIN, SERVICE_SET_BIT, {"function": "FUNC_RSD_DISABLE", "enable": True}),
+]
+
+
+def _reauth_flows(hass) -> list:
+    return [
+        f
+        for f in hass.config_entries.flow.async_progress()
+        if f["handler"] == DOMAIN and f["context"].get("source") == "reauth"
+    ]
+
+
+@pytest.mark.parametrize(("domain", "service", "data"), WRITE_CALLS)
+async def test_wrong_password_during_a_write_is_a_ha_error_and_starts_reauth(
+    hass, patched_api, no_write_settle, domain, service, data
+) -> None:
+    from custom_components.luxcloud_ha.api import LuxCloudAuthError
+
+    await setup_luxcloud(hass)
+    patched_api.write_error = LuxCloudAuthError("sai mật khẩu")
+
+    with pytest.raises(HomeAssistantError) as err:
+        await _call(hass, domain, service, data)
+
+    assert "đăng nhập" in str(err.value)
+    assert _reauth_flows(hass), "sai mật khẩu khi ghi phải mở reauth flow"
+
+
+@pytest.mark.parametrize(("domain", "service", "data"), WRITE_CALLS)
+async def test_cloud_down_during_a_write_is_a_ha_error_without_reauth(
+    hass, patched_api, no_write_settle, domain, service, data
+) -> None:
+    from custom_components.luxcloud_ha.api import LuxCloudApiError
+
+    await setup_luxcloud(hass)
+    patched_api.write_error = LuxCloudApiError("login: không có phản hồi")
+
+    with pytest.raises(HomeAssistantError) as err:
+        await _call(hass, domain, service, data)
+
+    assert "không phản hồi" in str(err.value)
+    assert not _reauth_flows(hass)
