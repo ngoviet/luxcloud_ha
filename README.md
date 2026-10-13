@@ -155,7 +155,7 @@ entered.
 | `binary_sensor.*_su_co_dang_hieu_luc` | | A fault is currently active |
 | `binary_sensor.*_dang_chay_quick_charge_discharge` | | A quick charge/discharge task is running |
 | `binary_sensor.*_co_firmware_moi` | | Newer firmware available than installed |
-| `binary_sensor.*_dang_chay_khong_luoi_eps` | Running off-grid — derived from `runtime.status & 0xC0` (bits `0x40`/`0x80`), **not** from the non-existent `isOffGrid` key (fixed 2026-09-30). On installations that already had the entity, the registry keeps the old entity_id `..._isoffgrid`. |
+| `binary_sensor.*_dang_chay_khong_luoi_eps` | Running off-grid — derived from `runtime.status & 0xC0` (bits `0x40`/`0x80`), **not** from the non-existent `isOffGrid` key (fixed 2026-09-30). Shows `unknown` — not `on` — when the cloud returns no grid measurement (since `v1.2.3`). On installations that already had the entity, the registry keeps the old entity_id `..._isoffgrid`. |
 | `binary_sensor.*_cloud_co_du_lieu` | | Cloud returned usable runtime data |
 
 ### Device 2 — the datalogger (linked with `via_device`)
@@ -261,6 +261,7 @@ a state — so a stale `off` is never mistaken for a real one.
 | 2.1 | Hardening: writes serialised so two commands cannot interleave, coordinator state in diagnostics, issue templates | ✅ shipped as `v1.2.0` |
 | 2.2 | `off_grid` flag corrected: derive it from `runtime.status & 0xC0` — the `isOffGrid` key the old code read does not exist in the API, so the flag was stuck `off` even during a real outage | ✅ shipped as `v1.2.1` |
 | 2.3 | Reliability fixes: log back in automatically when the cloud session expires (before, polling failed until a manual reload); a private cookie jar per entry; pick the plant/dongle that actually holds the configured serial on multi-plant accounts; reauth reloads the entry; the scan interval chosen during setup is honoured; `dongle_mat_ket_noi` shows "Problem" instead of an inverted "Connected"; yearly total no longer records negative energy at New Year; plant total understands `MWh`; a 401 re-logs in before asking for the password; reads run in parallel (max 4 in flight) and disabled firmware/series data is no longer fetched | ✅ `v1.2.2` |
+| 2.4 | Missing data is `unknown`, not a fake value: the off-grid flag no longer turns `on` when only the runtime request fails; "new firmware" no longer turns `on` when the inverter's `fwVersion` is missing; `pinv`/`prec` and the BMS sensors (cycles, cell voltages, cell delta, cell temperatures) no longer record `0` when the cloud omits them — a fake 0 on the `TOTAL_INCREASING` cycle counter was read as a meter reset and corrupted long-term statistics | ✅ `v1.2.3` |
 | 3 | Options polish, more translations | ⏳ planned |
 
 Submitting to the HACS default store is deliberately **not** planned: this integration talks to

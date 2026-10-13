@@ -328,6 +328,22 @@ def test_off_grid_flag() -> None:
     assert is_on("off_grid", data) is True
 
 
+@pytest.mark.parametrize("runtime", [{}, {"pinv": 1095}])
+def test_off_grid_unknown_without_grid_measurements(runtime: dict) -> None:
+    """Runtime lỗi (plant vẫn OK) ⇒ KHÔNG BIẾT, không được báo mất lưới.
+
+    Bản cũ coi thiếu vacr/fac = 0 V ⇒ `on` ⇒ automation báo mất điện kêu nhầm.
+    """
+    data = full_dataset()
+    data["runtime"] = runtime
+    assert BINARY_BY_KEY["off_grid"].is_on_fn(data) is None
+
+    entity = LuxCloudBinarySensor.__new__(LuxCloudBinarySensor)
+    entity.entity_description = BINARY_BY_KEY["off_grid"]
+    entity.coordinator = SimpleNamespace(data=data)
+    assert entity.is_on is None
+
+
 def test_off_grid_flag_regression_isoffgrid_key() -> None:
     """Hồi quy 2026-09-30: key `isOffGrid` KHÔNG có trong payload thật.
 
@@ -371,6 +387,14 @@ def test_firmware_available_when_catalogue_is_newer() -> None:
 def test_firmware_available_false_when_equal_or_older() -> None:
     assert is_on("firmware_available", full_dataset(fw_version=8)) is False
     data = full_dataset(fw_version=9)
+    assert is_on("firmware_available", data) is False
+
+
+def test_firmware_available_false_when_device_version_unknown() -> None:
+    """`get_plant` ghi -1 khi thiếu `fwVersion` — bản cũ: 8 > -1 ⇒ `on` giả."""
+    assert is_on("firmware_available", full_dataset(fw_version=-1)) is False
+    data = full_dataset()
+    data["plant"].pop("fw_version")
     assert is_on("firmware_available", data) is False
 
 

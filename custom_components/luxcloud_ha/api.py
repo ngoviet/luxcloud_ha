@@ -80,6 +80,18 @@ def _i(value: Any, default: int = 0) -> int:
         return default
 
 
+def _opt_i(value: Any) -> int | None:
+    """Như `_i` nhưng thiếu/sai kiểu → `None` (HA hiện `unknown`).
+
+    Dùng cho số đo thật: mặc định 0 sẽ ghi một điểm 0 giả vào lịch sử/thống kê
+    (với TOTAL_INCREASING, N → 0 → N bị hiểu là reset và cộng dồn sai).
+    """
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def _f(value: Any, default: float | None = None) -> float | None:
     try:
         return float(value)
@@ -294,14 +306,17 @@ class LuxCloudApi:
         r = await self._post(EP_BATTERY, {"serialNum": self.serial}) or {}
         if not r.get("success"):
             return {}
-        mx, mn = _i(r.get("globalMaxCellVoltage")), _i(r.get("globalMinCellVoltage"))
+        # cell voltage = 0 nghĩa là BMS không báo → coi như thiếu, không phải 0 mV.
+        mx = _opt_i(r.get("globalMaxCellVoltage")) or None
+        mn = _opt_i(r.get("globalMinCellVoltage")) or None
+        tmax, tmin = _opt_i(r.get("globalMaxCellTemp")), _opt_i(r.get("globalMinCellTemp"))
         return {
-            "cycles": _i(r.get("bmsCycleCnt")),
+            "cycles": _opt_i(r.get("bmsCycleCnt")),
             "cell_max_mv": mx,
             "cell_min_mv": mn,
-            "cell_delta_mv": (mx - mn) if (mx and mn) else 0,
-            "cell_max_temp_c": round(_i(r.get("globalMaxCellTemp")) / 10, 1),
-            "cell_min_temp_c": round(_i(r.get("globalMinCellTemp")) / 10, 1),
+            "cell_delta_mv": (mx - mn) if (mx and mn) else None,
+            "cell_max_temp_c": round(tmax / 10, 1) if tmax is not None else None,
+            "cell_min_temp_c": round(tmin / 10, 1) if tmin is not None else None,
             "status": r.get("batStatus", ""),
             "power_w": _i(r.get("batPower")),
             "has_cell_extremes": bool(r.get("hasCellExtremes")),
@@ -526,8 +541,8 @@ class LuxCloudApi:
                 "has_runtime": bool(runtime.get("hasRuntimeData")),
                 "has_today": bool(energy.get("hasTodayData")),
                 "lost": str((runtime or energy).get("lost", "")).strip().lower() == "true",
-                "pinv": _i(runtime.get("pinv")),
-                "prec": _i(runtime.get("prec")),
+                "pinv": _opt_i(runtime.get("pinv")),
+                "prec": _opt_i(runtime.get("prec")),
                 "fw_code": energy.get("fwCode") or runtime.get("fwCode") or "",
                 "power_rating": energy.get("powerRatingText", ""),
             },
