@@ -20,10 +20,23 @@ from custom_components.luxcloud_ha.coordinator import (
 class _StubApi:
     """API giả: ghi lại tham số `slow` và trả dữ liệu theo kịch bản."""
 
-    def __init__(self, responses: list[dict] | None = None, error: Exception | None = None):
+    def __init__(
+        self,
+        responses: list[dict] | None = None,
+        error: Exception | None = None,
+        login_error: Exception | None = None,
+    ):
         self.responses = responses or []
         self.error = error
+        self.login_error = login_error
         self.calls: list[bool] = []
+        self.logins = 0
+
+    async def login(self) -> bool:
+        self.logins += 1
+        if self.login_error is not None:
+            raise self.login_error
+        return True
 
     async def async_fetch_all(self, slow: bool, date_text: str) -> dict:
         self.calls.append(slow)
@@ -208,3 +221,47 @@ async def test_auth_failure_also_counts(hass) -> None:
 def test_failed_updates_starts_at_zero(hass) -> None:
     assert _coordinator(hass, _StubApi([]), _entry()).failed_updates == 0
 
+
+
+# ── Phiên cloud hết hạn ────────────────────────────────────────
+
+
+async def test_empty_response_relogs_in_and_retries(hass) -> None:
+    """Phiên JSESSIONID hết hạn → mọi endpoint rỗng → phải đăng nhập lại rồi lấy tiếp.
+
+    Trước đây không có bước này: integration báo lỗi mãi tới khi reload tay.
+    """
+    api = _StubApi([{}, BASE_DATA])
+    coordinator = _coordinator(hass, api, _entry())
+    data = await coordinator._async_update_data()
+    assert api.logins == 1
+    assert len(api.calls) == 2
+    assert data["runtime"] == {"pinv": 1}
+    assert coordinator.failed_updates == 0
+
+
+async def test_healthy_poll_does_not_relogin(hass) -> None:
+    api = _StubApi([BASE_DATA])
+    coordinator = _coordinator(hass, api, _entry())
+    await coordinator._async_update_data()
+    assert api.logins == 0
+
+
+async def test_relogin_rejected_becomes_auth_failed(hass) -> None:
+    """Mật khẩu đã đổi: đăng nhập lại bị từ chối → reauth, không phải UpdateFailed."""
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    api = _StubApi([{}], login_error=LuxCloudAuthError("bad password"))
+    coordinator = _coordinator(hass, api, _entry())
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+    assert coordinator.failed_updates == 1
+
+
+async def test_relogin_network_error_becomes_update_failed(hass) -> None:
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    api = _StubApi([{}], login_error=LuxCloudApiError("login: không có phản hồi"))
+    coordinator = _coordinator(hass, api, _entry())
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()

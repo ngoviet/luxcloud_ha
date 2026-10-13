@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.service import async_extract_config_entry_ids
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
@@ -42,6 +42,10 @@ PLATFORMS: list[Platform] = [
 ]
 
 LuxCloudConfigEntry = ConfigEntry[LuxCloudCoordinator]
+
+# Chỉ cấu hình qua UI — khai báo rõ để hassfest không báo lỗi (có `async_setup`
+# mà thiếu CONFIG_SCHEMA) và HA cảnh báo nếu ai đó lỡ thêm `luxcloud_ha:` vào YAML.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 SERVICE_SET_BIT = "set_bit"
 ATTR_FUNCTION = "function"
@@ -123,7 +127,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: LuxCloudConfigEntry) -> bool:
     """Tạo coordinator + forward platforms."""
-    session = async_get_clientsession(hass)
+    # Session RIÊNG cho mỗi entry (cookie jar riêng): đăng nhập dựa vào cookie
+    # JSESSIONID. Session dùng chung của HA có 1 cookie jar cho MỌI integration,
+    # nên 2 entry (hoặc integration LuxPower khác) cùng host sẽ đè phiên của nhau.
+    # Tạo trong lúc setup entry → HA tự detach khi entry unload.
+    session = async_create_clientsession(hass)
     region = str(entry.data.get(CONF_REGION, DEFAULT_REGION)).lower()
     api = LuxCloudApi(
         session,

@@ -62,6 +62,24 @@ def _num(value):
         return None
 
 
+_KWH_SCALE = {"wh": 0.001, "kwh": 1.0, "mwh": 1000.0, "gwh": 1_000_000.0}
+
+
+def _kwh(value):
+    """'1997.4 kWh' -> 1997.4 ; '2.1 MWh' -> 2100.0 ; '--' -> None.
+
+    Cloud trả text kèm đơn vị; khi sản lượng lớn nó có thể đổi sang MWh. Bỏ
+    đơn vị như `_num` thì sensor (đơn vị kWh) tụt từ ~2000 xuống ~2, làm hỏng
+    thống kê năng lượng.
+    """
+    number = _num(value)
+    if number is None:
+        return None
+    parts = str(value).split()
+    unit = parts[1].lower() if len(parts) > 1 else "kwh"
+    return round(number * _KWH_SCALE.get(unit, 1.0), 3)
+
+
 SENSORS: tuple[LuxSensorDescription, ...] = (
     # ── Dongle (device riêng) ─────────────────────────────────
     LuxSensorDescription(
@@ -253,7 +271,10 @@ SENSORS: tuple[LuxSensorDescription, ...] = (
         icon="mdi:chart-bar",
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
+        # Tổng của NĂM hiện tại: tăng dần rồi về ~0 khi sang năm mới.
+        # TOTAL (không last_reset) sẽ ghi cú tụt đó thành sản lượng ÂM trong
+        # thống kê; TOTAL_INCREASING hiểu đó là reset chu kỳ.
+        state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda d: (
             (_sub("total_years")(d).get(str(dt_util.now().year)) or {}).get("pv")
         ),
@@ -276,7 +297,8 @@ SENSORS: tuple[LuxSensorDescription, ...] = (
         value_fn=lambda d: (
             _sub("quick")(d).get("charge_status")
             or _sub("quick")(d).get("discharge_status")
-            or ("charging" if _sub("quick")(d).get("charging") else "idle")
+            or ("charging" if _sub("quick")(d).get("charging") else None)
+            or ("discharging" if _sub("quick")(d).get("discharging") else "idle")
         ),
         attrs_fn=lambda d: _sub("quick")(d),
     ),
@@ -286,7 +308,7 @@ SENSORS: tuple[LuxSensorDescription, ...] = (
         icon="mdi:solar-power-variant",
         native_unit_of_measurement="kWh",
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda d: _num(_sub("plant")(d).get("total_yielding_text")),
+        value_fn=lambda d: _kwh(_sub("plant")(d).get("total_yielding_text")),
         attrs_fn=lambda d: {
             "plant_name": _sub("plant")(d).get("plant_name", ""),
             "today": _sub("plant")(d).get("today_yielding_text", ""),
