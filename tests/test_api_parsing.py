@@ -301,9 +301,21 @@ def test_serial_not_in_account_when_the_cloud_lists_only_other_serials() -> None
     assert api.serial_in_account is False
 
 
-def test_serial_in_account_unknown_without_serial_fields() -> None:
+def test_serial_in_account_from_the_real_plant_list_shape() -> None:
     api = make_api()
     patch_post(api, route({const.EP_PLANT: fx.plant_payload()}))
+    run(api.get_plant())
+    assert api.serial_in_account is True
+    assert api.datalog_sn == "DU61242846"
+
+
+def test_serial_in_account_unknown_without_serial_fields() -> None:
+    """Cloud không trả field serial nào ⇒ không kết luận được (không chặn)."""
+    payload = fx.plant_payload()
+    for inv in payload["rows"][0]["inverters"]:
+        del inv["serialNum"], inv["datalogSn"]
+    api = make_api()
+    patch_post(api, route({const.EP_PLANT: payload}))
     run(api.get_plant())
     assert api.serial_in_account is None
 
