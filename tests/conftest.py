@@ -358,8 +358,10 @@ class FakeLuxCloudApi:
     bit_write_result = True
     quick_write_result = True
     fetch_error: Exception | None = None
+    login_error: Exception | None = None
 
     def __init__(self, session, base_url, account, password, serial) -> None:
+        self.session = session
         self.base_url = base_url
         self.account = account
         self.serial = serial.upper()
@@ -369,6 +371,7 @@ class FakeLuxCloudApi:
         self.fetch_calls: list[bool] = []
         self.bit_writes: list[tuple[str, bool]] = []
         self.quick_writes: list[tuple[str, str]] = []
+        self.logins = 0
         FakeLuxCloudApi.instances.append(self)
 
     @property
@@ -376,9 +379,12 @@ class FakeLuxCloudApi:
         return FakeLuxCloudApi.instances[-1]
 
     async def login(self) -> bool:
+        self.logins += 1
+        if FakeLuxCloudApi.login_error is not None:
+            raise FakeLuxCloudApi.login_error
         return True
 
-    async def async_fetch_all(self, slow: bool, date_text: str) -> dict:
+    async def async_fetch_all(self, slow: bool, date_text: str, **kwargs) -> dict:
         self.fetch_calls.append(slow)
         if FakeLuxCloudApi.fetch_error is not None:
             raise FakeLuxCloudApi.fetch_error
@@ -403,6 +409,7 @@ def patched_api(monkeypatch):
     FakeLuxCloudApi.bit_write_result = True
     FakeLuxCloudApi.quick_write_result = True
     FakeLuxCloudApi.fetch_error = None
+    FakeLuxCloudApi.login_error = None
     monkeypatch.setattr("custom_components.luxcloud_ha.LuxCloudApi", FakeLuxCloudApi)
     return FakeLuxCloudApi
 
