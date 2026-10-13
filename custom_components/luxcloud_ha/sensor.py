@@ -253,7 +253,10 @@ SENSORS: tuple[LuxSensorDescription, ...] = (
         icon="mdi:chart-bar",
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL,
+        # TOTAL_INCREASING, KHÔNG phải TOTAL: giá trị về ~0 mỗi 1/1. Với TOTAL
+        # (không có last_reset) recorder coi cú tụt đó là −cả-năm kWh và làm
+        # hỏng thống kê năng lượng; TOTAL_INCREASING hiểu đó là chu kỳ mới.
+        state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda d: (
             (_sub("total_years")(d).get(str(dt_util.now().year)) or {}).get("pv")
         ),

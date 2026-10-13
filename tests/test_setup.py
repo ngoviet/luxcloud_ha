@@ -214,3 +214,16 @@ async def test_unload_entry_removes_entities(hass, patched_api) -> None:
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
+
+
+async def test_each_entry_gets_its_own_cookie_jar(hass, patched_api) -> None:
+    """Phiên cloud là cookie JSESSIONID — dùng jar CHUNG của HA thì hai tài khoản
+    (hoặc config flow thêm entry mới) sẽ ghi đè phiên của nhau."""
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+    await setup_luxcloud(hass, "61204F0266")
+    await setup_luxcloud(hass, "61204F0999")
+    first, second = patched_api.instances
+    shared = async_get_clientsession(hass)
+    assert first.session is not shared and second.session is not shared
+    assert first.session.cookie_jar is not second.session.cookie_jar

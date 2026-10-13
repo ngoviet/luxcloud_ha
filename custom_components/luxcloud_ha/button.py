@@ -22,7 +22,6 @@ from .const import (
     CONFIG_WRITE_SETTLE,
     QUICK_CHARGE,
     QUICK_DISCHARGE,
-    QUICK_OPS,
 )
 from .coordinator import LuxCloudCoordinator
 from .device import device_info

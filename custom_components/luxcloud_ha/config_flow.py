@@ -8,7 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
 from .const import (
@@ -31,10 +31,22 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def _validate(hass: HomeAssistant, data: dict[str, Any]) -> str | None:
-    """Trả về error key hoặc None nếu OK."""
+    """Trả về error key hoặc None nếu OK.
+
+    Đăng nhập thử bằng session TẠM (cookie jar riêng), bỏ đi ngay sau đó — để
+    không chèn cookie của tài khoản đang thử vào session của entry đang chạy.
+    """
+    session = async_create_clientsession(hass, auto_cleanup=False)
+    try:
+        return await _validate_with(session, data)
+    finally:
+        session.detach()
+
+
+async def _validate_with(session, data: dict[str, Any]) -> str | None:
     serial = str(data[CONF_SERIAL]).strip().upper()
     api = LuxCloudApi(
-        async_get_clientsession(hass),
+        session,
         REGIONS.get(str(data.get(CONF_REGION, DEFAULT_REGION)).lower(), REGIONS[DEFAULT_REGION]),
         str(data[CONF_ACCOUNT]).strip(),
         str(data[CONF_PASSWORD]),

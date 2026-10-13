@@ -58,15 +58,14 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
 
     async def _async_update_data(self) -> dict:
         self._tick += 1
-        want_slow = bool(
-            self.config_entry.options.get(CONF_ENABLE_SERIES, True)
-            or self.config_entry.options.get(CONF_ENABLE_FIRMWARE, True)
+        options = self.config_entry.options
+        want_firmware = bool(options.get(CONF_ENABLE_FIRMWARE, True))
+        want_series = bool(options.get(CONF_ENABLE_SERIES, True))
+        slow = (want_firmware or want_series) and (
+            self._tick == 1 or self._tick % SLOW_EVERY == 0
         )
-        slow = self._tick == 1 or (want_slow and self._tick % SLOW_EVERY == 0)
         try:
-            data = await self.api.async_fetch_all(
-                slow=slow, date_text=dt_util.now().strftime("%Y-%m-%d")
-            )
+            data = await self._async_fetch(slow, want_firmware, want_series)
         except LuxCloudAuthError as err:
             self.failed_updates += 1
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -74,7 +73,7 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
             self.failed_updates += 1
             raise UpdateFailed(str(err)) from err
 
-        if not data.get("plant") and not data.get("runtime"):
+        if not _has_data(data):
             self.failed_updates += 1
             raise UpdateFailed("cloud không trả dữ liệu (plant/runtime rỗng)")
 
@@ -88,9 +87,45 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
                 data[key] = self._cache[key]
 
         # khoá chậm có thể bị tắt trong options
-        if not self.config_entry.options.get(CONF_ENABLE_FIRMWARE, True):
+        if not want_firmware:
             data.pop("firmware", None)
-        if not self.config_entry.options.get(CONF_ENABLE_SERIES, True):
+        if not want_series:
             data.pop("day_curve", None)
             data.pop("total_years", None)
         return data
+
+    async def _async_fetch(self, slow: bool, firmware: bool, series: bool) -> dict:
+        """Một lần poll; phiên cloud hết hạn thì đăng nhập lại rồi thử ĐÚNG một lần nữa.
+
+        Cookie JSESSIONID của WManage hết hạn sau một thời gian (hoặc bị đá khi
+        app đăng nhập lại). Lúc đó cloud trả 401 hoặc trả rỗng/HTML cho mọi
+        endpoint. Trước đây integration chỉ đăng nhập lúc setup ⇒ hết phiên là
+        kẹt `UpdateFailed` mãi (hoặc bị đòi nhập lại mật khẩu oan vì 401) cho
+        tới khi reload. Chỉ khi chính lệnh `login()` bị từ chối mới là sai
+        mật khẩu thật (→ reauth).
+        """
+        date_text = dt_util.now().strftime("%Y-%m-%d")
+
+        async def fetch() -> dict:
+            return await self.api.async_fetch_all(
+                slow=slow, date_text=date_text, firmware=firmware, series=series
+            )
+
+        try:
+            data = await fetch()
+        except LuxCloudAuthError:
+            data = None
+        if data is not None and _has_data(data):
+            return data
+
+        _LOGGER.debug("luxcloud: phiên cloud có vẻ đã hết hạn — đăng nhập lại")
+        await self.api.login()  # LuxCloudAuthError ở đây = sai mật khẩu thật
+        try:
+            return await fetch()
+        except LuxCloudAuthError as err:
+            # Vừa đăng nhập ĐƯỢC mà vẫn 401 → lỗi phía cloud, không phải mật khẩu.
+            raise LuxCloudApiError(f"cloud từ chối ngay sau khi đăng nhập lại: {err}") from err
+
+
+def _has_data(data: dict) -> bool:
+    return bool(data.get("plant") or data.get("runtime"))

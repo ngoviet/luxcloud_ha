@@ -216,9 +216,10 @@ a state — so a stale `off` is never mistaken for a real one.
   device type (e.g. `08`) while the inverter reports its own `fwVersion` (e.g. `3`). Cross-check
   the code (`CHAA-000303`) in the app before flashing anything — the `caveat` attribute records
   this warning on the entity.
-- **Account sharing.** Like the phone app, this integration logs into your cloud account. A
-  session is refreshed transparently; if you see intermittent auth errors while the app is
-  open, increase the scan interval.
+- **Account sharing.** Like the phone app, this integration logs into your cloud account. When
+  the cloud session expires (or the app logs in and kicks it), the next poll logs in again and
+  retries once; you are only asked for the password if that fresh login is itself rejected.
+  Each config entry keeps its own cookie jar, so several accounts can run side by side.
 - **Writes go through the vendor cloud.** A write is only as reliable as the cloud→datalogger
   link: it needs the dongle online, and it takes a few seconds to show up in the reading. A
   rejected write raises an error in Home Assistant instead of silently pretending it worked.
@@ -248,6 +249,7 @@ a state — so a stale `off` is never mistaken for a real one.
 | 2 | `switch` for HR[179] config bits, `button`s for quick charge/discharge, `set_bit` service | ✅ shipped as `v1.1.0` |
 | 2.1 | Hardening: writes serialised so two commands cannot interleave, coordinator state in diagnostics, issue templates | ✅ shipped as `v1.2.0` |
 | 2.2 | `off_grid` flag corrected: derive it from `runtime.status & 0xC0` — the `isOffGrid` key the old code read does not exist in the API, so the flag was stuck `off` even during a real outage | ✅ shipped as `v1.2.1` |
+| 2.3 | Reliability: expired cloud sessions log in again automatically (no false reauth prompt on a 401), each entry gets its own cookie jar so two accounts or a new setup cannot hijack each other's session, reads run in parallel (capped at 4) so a poll takes a fraction of the time, disabled firmware/series data is no longer fetched, `sensor.*_tong_theo_nam` is `total_increasing` so the yearly reset on 1 January no longer corrupts energy statistics | ✅ `v1.2.2` |
 | 3 | Options polish, more translations | ⏳ planned |
 
 Submitting to the HACS default store is deliberately **not** planned: this integration talks to

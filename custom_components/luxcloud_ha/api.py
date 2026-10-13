@@ -44,6 +44,11 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Số request chạy song song tối đa. Một lần poll có 8–11 request độc lập;
+# chạy tuần tự thì mỗi poll mất TỔNG thời gian phản hồi của tất cả. Song song
+# nhưng có trần để không dội cloud.
+MAX_PARALLEL_REQUESTS = 4
+
 try:  # HA luôn có `cryptography`; nếu thiếu thì bỏ qua refreshInputData
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -113,13 +118,14 @@ class LuxCloudApi:
         # bảo đảm thứ tự giữa các request rời. `asyncio.Lock` phát khoá theo FIFO,
         # nên các lệnh ra khỏi đây ĐÚNG thứ tự người dùng yêu cầu.
         self._write_lock = asyncio.Lock()
+        self._request_slots = asyncio.Semaphore(MAX_PARALLEL_REQUESTS)
 
     # ── HTTP ───────────────────────────────────────────────────
     async def _post(self, endpoint: str, params: dict | None, base: str | None = None) -> dict | None:
         url = f"{base or self._base_url}{endpoint}"
         data = aiohttp.FormData({k: str(v) for k, v in (params or {}).items()})
         try:
-            async with self._session.post(
+            async with self._request_slots, self._session.post(
                 url, data=data, timeout=aiohttp.ClientTimeout(total=25)
             ) as resp:
                 if resp.status == 401:
@@ -444,20 +450,45 @@ class LuxCloudApi:
         return best or {}
 
     # ── Tổng hợp 1 lần refresh ─────────────────────────────────
-    async def async_fetch_all(self, slow: bool, date_text: str) -> dict:
-        """Gọi các endpoint cần thiết. `slow=True` → thêm firmware + chuỗi ngày/năm."""
-        plant = await self.get_plant()
-        runtime = await self.get_runtime()
-        energy = await self.get_energy()
-        data = {
+    async def async_fetch_all(
+        self,
+        slow: bool,
+        date_text: str,
+        *,
+        firmware: bool = True,
+        series: bool = True,
+    ) -> dict:
+        """Gọi các endpoint cần thiết, SONG SONG (tối đa `MAX_PARALLEL_REQUESTS`).
+
+        `slow=True` → thêm khoá chậm; `firmware`/`series` cho phép bỏ hẳn nhóm
+        đã tắt trong options (khỏi tốn request rồi vứt kết quả).
+        """
+        # dongle/event cần `plant_id` — chỉ lần đầu (chưa biết) mới phải đợi plant.
+        first_plant = None if self.plant_id else await self.get_plant()
+        calls: dict[str, Any] = {
+            "runtime": self.get_runtime(),
+            "energy": self.get_energy(),
+            "battery": self.get_battery(),
+            "quick": self.get_quick_status(),
+            "bits": self.get_config_bits(),
+        }
+        if first_plant is None:
+            calls["plant"] = self.get_plant()
+        calls["dongle"] = self.get_dongle()
+        calls["event"] = self.get_events()
+        if slow and series:
+            calls["day_curve"] = self.get_day_curve(date_text)
+            calls["total_years"] = self.get_total_years()
+        results = dict(zip(calls, await asyncio.gather(*calls.values()), strict=True))
+        plant = results.pop("plant", first_plant) or {}
+        # firmware chọn loại theo `standard` của plant → chạy sau khi có plant.
+        if slow and firmware:
+            results["firmware"] = await self.get_firmware(plant.get("standard", ""))
+
+        runtime, energy = results["runtime"], results["energy"]
+        return {
             "plant": plant,
-            "runtime": runtime,
-            "energy": energy,
-            "dongle": await self.get_dongle(),
-            "event": await self.get_events(),
-            "battery": await self.get_battery(),
-            "quick": await self.get_quick_status(),
-            "bits": await self.get_config_bits(),
+            **results,
             "green": {
                 "co2_ton": _num_text(energy.get("totalCo2ReductionText")),
                 "coal_kg": _num_text(energy.get("totalCoalReductionText")),
@@ -474,8 +505,3 @@ class LuxCloudApi:
                 "power_rating": energy.get("powerRatingText", ""),
             },
         }
-        if slow:
-            data["firmware"] = await self.get_firmware(plant.get("standard", ""))
-            data["day_curve"] = await self.get_day_curve(date_text)
-            data["total_years"] = await self.get_total_years()
-        return data

@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.service import async_extract_config_entry_ids
 
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
@@ -123,7 +123,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: LuxCloudConfigEntry) -> bool:
     """Tạo coordinator + forward platforms."""
-    session = async_get_clientsession(hass)
+    # Session RIÊNG (cookie jar riêng), không dùng session chung của HA: phiên
+    # đăng nhập là cookie JSESSIONID theo host. Dùng chung jar thì hai entry
+    # (hai tài khoản cùng region), config flow thêm entry mới, hay integration
+    # khác gọi cùng host sẽ GHI ĐÈ cookie của nhau → entry này lặng lẽ đọc dữ
+    # liệu của tài khoản khác hoặc mất phiên. HA tự detach session này khi
+    # entry unload (tạo trong lúc setup entry).
+    session = async_create_clientsession(hass)
     region = str(entry.data.get(CONF_REGION, DEFAULT_REGION)).lower()
     api = LuxCloudApi(
         session,

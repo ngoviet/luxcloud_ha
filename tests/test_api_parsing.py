@@ -807,3 +807,71 @@ def test_writes_still_succeed_through_the_lock() -> None:
     assert run(api.set_config_bit("FUNC_RSD_DISABLE", True)) is True
     assert len(calls) == 1
 
+
+
+def test_fetch_all_skips_disabled_slow_groups() -> None:
+    api = make_api()
+    calls = patch_post(api, _fetch_all_handler())
+    data = run(
+        api.async_fetch_all(slow=True, date_text="2026-09-28", firmware=False, series=False)
+    )
+    endpoints = {ep for ep, _p, _b in calls}
+    assert not endpoints & {const.EP_DAY_CURVE, const.EP_TOTAL_COLUMN, const.EP_FIRMWARE_BY_TYPE}
+    assert "firmware" not in data and "day_curve" not in data
+
+
+def test_fetch_all_fetches_plant_once_per_poll() -> None:
+    """Lần đầu plant đi trước (cần plant_id); các lần sau gộp vào lô song song."""
+    api = make_api()
+    calls = patch_post(api, _fetch_all_handler())
+    run(api.async_fetch_all(slow=False, date_text="2026-09-28"))
+    run(api.async_fetch_all(slow=False, date_text="2026-09-28"))
+    assert [ep for ep, _p, _b in calls].count(const.EP_PLANT) == 2
+
+
+def test_fetch_all_runs_reads_in_parallel_under_the_cap() -> None:
+    from custom_components.luxcloud_ha.api import MAX_PARALLEL_REQUESTS
+
+    api = make_api()
+    api.plant_id = 123456
+    handler = _fetch_all_handler()
+    active = peak = 0
+
+    async def _send(url, **kwargs):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+
+    class _Resp:
+        status = 200
+
+        def __init__(self, endpoint):
+            self.endpoint = endpoint
+
+        async def __aenter__(self):
+            await _send(self.endpoint)
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def text(self):
+            import json
+
+            return json.dumps(handler(self.endpoint, {}, None) or {})
+
+    class _Session:
+        def post(self, url, **kwargs):
+            return _Resp(url.split("/WManage", 1)[1])
+
+    async def go():
+        api._session = _Session()
+        return await api.async_fetch_all(slow=True, date_text="2026-09-28")
+
+    data = run(go())
+    assert 1 < peak <= MAX_PARALLEL_REQUESTS
+    assert data["battery"]["cycles"] == 54
+    assert data["dongle"]["sn"] == "DU61242846"
+    assert data["firmware"]["latest_version"] == 8
