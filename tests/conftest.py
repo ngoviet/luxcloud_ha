@@ -63,6 +63,11 @@ def plant_payload(
                         "protocolVersion": 2,
                         "model": "6.5kW",
                         "batteryType": "Lithium",
+                        # Đo live 2026-10-13 (tools/probe_plant_serial_live.py): cloud
+                        # CÓ trả serial inverter + dongle ở đây — config flow dựa vào nó
+                        # để chặn serial gõ sai, coordinator dựa vào nó để chọn plant.
+                        "serialNum": "61204F0266",
+                        "datalogSn": "DU61242846",
                     }
                 ],
             }
