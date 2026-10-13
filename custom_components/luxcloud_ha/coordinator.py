@@ -63,10 +63,17 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
             or self.config_entry.options.get(CONF_ENABLE_FIRMWARE, True)
         )
         slow = self._tick == 1 or (want_slow and self._tick % SLOW_EVERY == 0)
+        date_text = dt_util.now().strftime("%Y-%m-%d")
         try:
-            data = await self.api.async_fetch_all(
-                slow=slow, date_text=dt_util.now().strftime("%Y-%m-%d")
-            )
+            data = await self.api.async_fetch_all(slow=slow, date_text=date_text)
+            if not data.get("plant") and not data.get("runtime"):
+                # Phiên JSESSIONID hết hạn thì cloud KHÔNG trả 401 mà trả trang
+                # login/`success=false` → mọi endpoint ra rỗng. Không đăng nhập lại
+                # thì integration hỏng vĩnh viễn tới khi reload. Đăng nhập lại 1 lần
+                # rồi thử lại; sai mật khẩu → LuxCloudAuthError → reauth bên dưới.
+                _LOGGER.debug("luxcloud: dữ liệu rỗng, đăng nhập lại rồi thử lại")
+                await self.api.login()
+                data = await self.api.async_fetch_all(slow=slow, date_text=date_text)
         except LuxCloudAuthError as err:
             self.failed_updates += 1
             raise ConfigEntryAuthFailed(str(err)) from err

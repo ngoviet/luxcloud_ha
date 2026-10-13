@@ -162,6 +162,31 @@ def test_plant_total_yield_parses_unit_text() -> None:
     assert value("plant_total_yield", full_dataset()) == 1997.4
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("2.1 MWh", 2100.0), ("850 Wh", 0.85), ("12.5 kWh", 12.5), ("12.5", 12.5)],
+)
+def test_plant_total_yield_converts_the_unit_to_kwh(text: str, expected: float) -> None:
+    """Cloud có thể đổi sang MWh khi sản lượng lớn — bỏ đơn vị thì sensor tụt 1000×."""
+    data = full_dataset()
+    data["plant"]["total_yielding_text"] = text
+    assert value("plant_total_yield", data) == expected
+
+
+def test_total_by_year_resets_without_negative_statistics() -> None:
+    """Tổng NĂM về ~0 khi sang năm mới → phải là TOTAL_INCREASING (reset), không TOTAL."""
+    from homeassistant.components.sensor import SensorStateClass
+
+    assert SENSOR_BY_KEY["total_by_year"].state_class is SensorStateClass.TOTAL_INCREASING
+
+
+def test_dongle_lost_uses_problem_device_class() -> None:
+    """CONNECTIVITY coi `on` là ĐANG kết nối — ngược nghĩa với cờ 'mất kết nối'."""
+    from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+
+    assert BINARY_BY_KEY["dongle_lost"].device_class is BinarySensorDeviceClass.PROBLEM
+
+
 def test_plant_total_yield_none_for_placeholder() -> None:
     data = full_dataset()
     data["plant"]["total_yielding_text"] = "--"
@@ -235,6 +260,7 @@ def test_config_bits_zero_when_none_enabled() -> None:
         ({"charging": True, "charge_status": "WAIT_CHARGE", "discharge_status": ""}, "WAIT_CHARGE"),
         ({"charging": False, "charge_status": "", "discharge_status": "WAIT_DISCHARGE"}, "WAIT_DISCHARGE"),
         ({"charging": True, "charge_status": "", "discharge_status": ""}, "charging"),
+        ({"charging": False, "discharging": True, "charge_status": "", "discharge_status": ""}, "discharging"),
     ],
 )
 def test_quick_state_resolution(quick: dict, expected: str) -> None:

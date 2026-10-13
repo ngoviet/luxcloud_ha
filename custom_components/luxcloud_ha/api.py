@@ -108,6 +108,9 @@ class LuxCloudApi:
         self.serial = serial.upper()
         self.user_id: int | None = None
         self.plant_id: int | None = None
+        # Dongle gắn với inverter này (nếu getPlantList trả) — để chọn đúng dòng
+        # trong datalog/list khi plant có nhiều dongle.
+        self.datalog_sn: str | None = None
         # Khoá tuần tự hoá ĐƯỜNG GHI. HA có thể phát nhiều lệnh ghi cùng lúc
         # (bấm 2 switch liền nhau, hoặc switch + service set_bit), và cloud không
         # bảo đảm thứ tự giữa các request rời. `asyncio.Lock` phát khoá theo FIFO,
@@ -184,9 +187,9 @@ class LuxCloudApi:
         rows = r.get("rows") or []
         if not rows:
             return {}
-        plant = rows[0]
+        plant, inv = self._pick_plant(rows)
         self.plant_id = _i(plant.get("plantId"), 0) or None
-        inv = (plant.get("inverters") or [{}])[0]
+        self.datalog_sn = str(inv.get("datalogSn") or "").strip().upper() or None
         return {
             "plant_id": self.plant_id,
             "plant_name": plant.get("name", ""),
@@ -203,6 +206,22 @@ class LuxCloudApi:
             "battery_type": inv.get("batteryType", ""),
         }
 
+    def _pick_plant(self, rows: list) -> tuple[dict, dict]:
+        """Chọn plant + inverter chứa ĐÚNG serial của entry.
+
+        Tài khoản có nhiều plant (hoặc nhiều inverter/plant) thì `rows[0]` không
+        chắc là inverter đang cấu hình — dongle/sự kiện đọc theo `plantId` sẽ ra
+        của nhà khác. Không tìm thấy serial (cloud không trả field serial) thì lùi
+        về phần tử đầu như trước.
+        """
+        for plant in rows:
+            for inv in plant.get("inverters") or []:
+                sn = inv.get("serialNum") or inv.get("sn") or ""
+                if str(sn).strip().upper() == self.serial:
+                    return plant, inv
+        plant = rows[0]
+        return plant, (plant.get("inverters") or [{}])[0]
+
     async def get_dongle(self) -> dict:
         if not self.plant_id:
             return {}
@@ -214,7 +233,15 @@ class LuxCloudApi:
         rows = r.get("rows") or []
         if not rows:
             return {}
-        d = rows[0]
+        d = next(
+            (
+                x
+                for x in rows
+                if self.datalog_sn
+                and str(x.get("datalogSn", "")).strip().upper() == self.datalog_sn
+            ),
+            rows[0],
+        )
         return {
             "sn": d.get("datalogSn", ""),
             "lost": str(d.get("lost", "")).strip().lower() == "true",

@@ -118,3 +118,10 @@ async def test_every_options_field_is_labelled_and_described(hass, patched_api) 
         assert any(key.endswith(f"data_description.{field}") for key in strings), (
             f"thiếu data_description cho tuỳ chọn '{field}'"
         )
+
+
+def test_config_schema_is_config_entry_only() -> None:
+    """Có `async_setup` thì hassfest bắt buộc khai báo CONFIG_SCHEMA."""
+    from custom_components import luxcloud_ha
+
+    assert hasattr(luxcloud_ha, "CONFIG_SCHEMA")
