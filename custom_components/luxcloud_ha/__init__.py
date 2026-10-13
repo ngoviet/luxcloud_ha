@@ -43,6 +43,10 @@ PLATFORMS: list[Platform] = [
 
 LuxCloudConfigEntry = ConfigEntry[LuxCloudCoordinator]
 
+# Chỉ cấu hình qua UI — khai báo rõ để hassfest không báo lỗi (có `async_setup`
+# mà thiếu CONFIG_SCHEMA) và HA cảnh báo nếu ai đó lỡ thêm `luxcloud_ha:` vào YAML.
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 SERVICE_SET_BIT = "set_bit"
 ATTR_FUNCTION = "function"
 ATTR_ENABLE = "enable"
@@ -123,12 +127,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: LuxCloudConfigEntry) -> bool:
     """Tạo coordinator + forward platforms."""
-    # Session RIÊNG (cookie jar riêng), không dùng session chung của HA: phiên
-    # đăng nhập là cookie JSESSIONID theo host. Dùng chung jar thì hai entry
-    # (hai tài khoản cùng region), config flow thêm entry mới, hay integration
-    # khác gọi cùng host sẽ GHI ĐÈ cookie của nhau → entry này lặng lẽ đọc dữ
-    # liệu của tài khoản khác hoặc mất phiên. HA tự detach session này khi
-    # entry unload (tạo trong lúc setup entry).
+    # Session RIÊNG cho mỗi entry (cookie jar riêng): đăng nhập dựa vào cookie
+    # JSESSIONID. Session dùng chung của HA có 1 cookie jar cho MỌI integration,
+    # nên 2 entry (hoặc integration LuxPower khác) cùng host sẽ đè phiên của nhau.
+    # Tạo trong lúc setup entry → HA tự detach khi entry unload.
     session = async_create_clientsession(hass)
     region = str(entry.data.get(CONF_REGION, DEFAULT_REGION)).lower()
     api = LuxCloudApi(

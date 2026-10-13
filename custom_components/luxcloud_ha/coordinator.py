@@ -95,14 +95,12 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
         return data
 
     async def _async_fetch(self, slow: bool, firmware: bool, series: bool) -> dict:
-        """Một lần poll; phiên cloud hết hạn thì đăng nhập lại rồi thử ĐÚNG một lần nữa.
+        """Một lần poll; phiên hết hạn thì đăng nhập lại rồi thử ĐÚNG một lần nữa.
 
-        Cookie JSESSIONID của WManage hết hạn sau một thời gian (hoặc bị đá khi
-        app đăng nhập lại). Lúc đó cloud trả 401 hoặc trả rỗng/HTML cho mọi
-        endpoint. Trước đây integration chỉ đăng nhập lúc setup ⇒ hết phiên là
-        kẹt `UpdateFailed` mãi (hoặc bị đòi nhập lại mật khẩu oan vì 401) cho
-        tới khi reload. Chỉ khi chính lệnh `login()` bị từ chối mới là sai
-        mật khẩu thật (→ reauth).
+        Phiên JSESSIONID hết hạn thì cloud trả trang login/`success=false` → mọi
+        endpoint ra rỗng. Một số trường hợp có thể là HTTP 401 — cũng chỉ nghĩa
+        là PHIÊN hỏng, chưa chắc mật khẩu sai, nên cũng đăng nhập lại trước.
+        Chỉ khi chính `login()` bị từ chối mới là sai mật khẩu thật (→ reauth).
         """
         date_text = dt_util.now().strftime("%Y-%m-%d")
 

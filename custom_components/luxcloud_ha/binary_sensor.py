@@ -106,7 +106,11 @@ BINARY_SENSORS: tuple[LuxBinaryDescription, ...] = (
         # device đã là "LuxCloud Dongle" → để "Dongle mất kết nối" thành
         # binary_sensor.luxcloud_dongle_dongle_mat_ket_noi (đo 2026-09-28).
         name="Mất kết nối",
-        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        # PROBLEM, không phải CONNECTIVITY: với CONNECTIVITY, `on` nghĩa là ĐANG
+        # kết nối, trong khi is_on ở đây = MẤT kết nối → UI hiện ngược ("Đã kết
+        # nối" khi dongle mất). PROBLEM giữ nguyên state on/off (automation cũ
+        # không vỡ) và hiển thị đúng nghĩa "có sự cố".
+        device_class=BinarySensorDeviceClass.PROBLEM,
         dongle=True,
         is_on_fn=lambda d: bool(_sub("dongle")(d).get("lost")),
     ),
