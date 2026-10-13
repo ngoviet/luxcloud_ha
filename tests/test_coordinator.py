@@ -30,6 +30,7 @@ class _StubApi:
         self.error = error
         self.login_error = login_error
         self.calls: list[bool] = []
+        self.fetch_kwargs: list[dict] = []
         self.logins = 0
 
     async def login(self) -> bool:
@@ -38,8 +39,9 @@ class _StubApi:
             raise self.login_error
         return True
 
-    async def async_fetch_all(self, slow: bool, date_text: str) -> dict:
+    async def async_fetch_all(self, slow: bool, date_text: str, **kwargs) -> dict:
         self.calls.append(slow)
+        self.fetch_kwargs.append(kwargs)
         if self.error is not None:
             raise self.error
         index = min(len(self.calls) - 1, len(self.responses) - 1)
@@ -120,14 +122,14 @@ async def test_disabling_series_removes_curve_and_totals(hass) -> None:
     assert "total_years" not in data
 
 
-async def test_both_disabled_means_no_slow_ticks_after_the_first(hass) -> None:
+async def test_both_disabled_means_no_slow_ticks_at_all(hass) -> None:
     api = _StubApi([BASE_DATA])
     coordinator = _coordinator(
         hass, api, _entry(**{CONF_ENABLE_SERIES: False, CONF_ENABLE_FIRMWARE: False})
     )
     for _ in range(SLOW_EVERY):
         await coordinator._async_update_data()
-    assert api.calls == [True] + [False] * (SLOW_EVERY - 1)
+    assert api.calls == [False] * SLOW_EVERY
 
 
 async def test_empty_cloud_response_raises_update_failed(hass) -> None:
@@ -148,7 +150,7 @@ async def test_plant_or_runtime_alone_is_enough(hass) -> None:
 async def test_auth_error_becomes_config_entry_auth_failed(hass) -> None:
     from homeassistant.exceptions import ConfigEntryAuthFailed
 
-    api = _StubApi(error=LuxCloudAuthError("sai mật khẩu"))
+    api = _StubApi(error=LuxCloudAuthError("sai mật khẩu"), login_error=LuxCloudAuthError("sai mật khẩu"))
     coordinator = _coordinator(hass, api, _entry())
     with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()
@@ -211,7 +213,7 @@ async def test_empty_cloud_response_also_counts_as_a_failure(hass) -> None:
 async def test_auth_failure_also_counts(hass) -> None:
     from homeassistant.exceptions import ConfigEntryAuthFailed
 
-    api = _StubApi(error=LuxCloudAuthError("sai mật khẩu"))
+    api = _StubApi(error=LuxCloudAuthError("sai mật khẩu"), login_error=LuxCloudAuthError("sai mật khẩu"))
     coordinator = _coordinator(hass, api, _entry())
     with pytest.raises(ConfigEntryAuthFailed):
         await coordinator._async_update_data()
@@ -265,3 +267,37 @@ async def test_relogin_network_error_becomes_update_failed(hass) -> None:
     coordinator = _coordinator(hass, api, _entry())
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+async def test_401_with_valid_password_does_not_trigger_reauth(hass) -> None:
+    """401 chỉ chứng tỏ PHIÊN hỏng; mật khẩu còn đúng thì đăng nhập lại, không reauth."""
+
+    class _ExpiredOnce(_StubApi):
+        async def async_fetch_all(self, slow, date_text, **kwargs):
+            if not self.logins:
+                raise LuxCloudAuthError("HTTP 401")
+            return await super().async_fetch_all(slow, date_text, **kwargs)
+
+    api = _ExpiredOnce([BASE_DATA])
+    coordinator = _coordinator(hass, api, _entry())
+    assert (await coordinator._async_update_data())["runtime"] == {"pinv": 1}
+    assert api.logins == 1
+
+
+async def test_401_right_after_a_successful_relogin_is_not_an_auth_failure(hass) -> None:
+    """Đăng nhập được mà vẫn 401 là lỗi cloud — không được đòi user nhập lại mật khẩu."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    api = _StubApi(error=LuxCloudAuthError("HTTP 401"))
+    coordinator = _coordinator(hass, api, _entry())
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert api.logins == 1
+
+
+async def test_disabled_groups_are_not_requested(hass) -> None:
+    """Tắt firmware/series trong options thì đừng tốn request rồi vứt kết quả."""
+    api = _StubApi([BASE_DATA])
+    coordinator = _coordinator(hass, api, _entry(**{CONF_ENABLE_FIRMWARE: False}))
+    await coordinator._async_update_data()
+    assert api.fetch_kwargs[0] == {"firmware": False, "series": True}
