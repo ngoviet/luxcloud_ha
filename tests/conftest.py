@@ -240,6 +240,53 @@ def firmware_rows(standard: str, versions: tuple[int, int, int]) -> dict:
     }
 
 
+def _energy_row(key: str, idx: int, *, pv1: int, pv2: int, imp: int, chg: int, dis: int,
+                eps: int, cons: int) -> dict:
+    """Một dòng monthColumn/yearColumn — ĐÚNG bộ khoá đo thật 2026-10-21 (0,1 kWh)."""
+    return {
+        key: idx, "ePv1Day": pv1, "ePv2Day": pv2, "ePv3Day": 0, "eInvDay": 0, "eRecDay": 0,
+        "eChgDay": chg, "eDisChgDay": dis, "eEpsDay": eps, "eToGridDay": 0, "eToUserDay": imp,
+        "eGenDay": 0, "eAcCoupleDay": 0, "eLoadDay": 0, "eGridBuyDay": 0, "eGridSaleDay": 0,
+        "eConsumptionDay": cons,
+    }
+
+
+def month_column_payload(days_with_data: int = 31, *, cons: int = 300) -> dict:
+    """monthColumn: luôn đủ 31 dòng; ngày chưa tới = 0.
+
+    Ngày `d` có dữ liệu: PV = 200 + 100 (30,0 kWh), mua lưới = d (0,d kWh),
+    sạc 150, xả 140, EPS = 10 chỉ ngày 11, tiêu thụ = `cons`.
+    """
+    rows = []
+    for day in range(1, 32):
+        on = day <= days_with_data
+        rows.append(
+            _energy_row(
+                "day", day,
+                pv1=200 if on else 0, pv2=100 if on else 0, imp=day if on else 0,
+                chg=150 if on else 0, dis=140 if on else 0,
+                eps=10 if (on and day == 11) else 0, cons=cons if on else 0,
+            )
+        )
+    return {"success": True, "dayMax": 31, "data": rows}
+
+
+def year_column_payload() -> dict:
+    """yearColumn: 12 dòng; 3 tháng đầu có số (mỗi tháng 900 kWh PV, 300 mua, 1000 tiêu thụ)."""
+    rows = []
+    for month in range(1, 13):
+        on = month <= 3
+        rows.append(
+            _energy_row(
+                "month", month,
+                pv1=6000 if on else 0, pv2=3000 if on else 0, imp=3000 if on else 0,
+                chg=4000 if on else 0, dis=3900 if on else 0, eps=20 if on else 0,
+                cons=10000 if on else 0,
+            )
+        )
+    return {"success": True, "data": rows}
+
+
 def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
     """Bộ dữ liệu đã chuẩn hoá — dùng để test value_fn của entity."""
     return {
@@ -270,6 +317,8 @@ def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
             "vacr": 2217,  # 221.7 V
             "fac": 5015,  # 50.15 Hz
             "peps": 0,
+            "statusText": "normal",
+            "deviceTime": "2026-09-28 07:30:15",
             "fwCode": "CHAA-000303",
             "serialNum": "61204F0266",
         },
@@ -344,6 +393,23 @@ def full_dataset(*, fw_version: int = 3, lost: str = "False") -> dict:
         "day_curve": {"date": "2026-09-28", "count": 72, "points": []},
         "total_years": {
             "2026": {"pv": 1974.0, "import": 900.0, "export": 200.0, "consumption": 1500.0}
+        },
+        # Số thật 2026-10-21 (fetcher cũ, kỳ 27/09→26/10) để so 1-1 khi chuyển nguồn.
+        "periods": {
+            "month": {
+                "pv": 765.9, "grid_import": 73.7, "grid_export": 0.0, "charge": 387.3,
+                "discharge": 385.0, "eps": 5.3, "consumption": 746.5,
+                "start": "2026-09-27", "end": "2026-10-26", "savings": 2295653,
+            },
+            "year": {
+                "pv": 2710.9, "grid_import": 895.4, "grid_export": 0.0, "charge": 1271.1,
+                "discharge": 1318.4, "eps": 16.1, "consumption": 3254.7,
+                "year": 2026, "savings": 8816232,
+            },
+            "yesterday": {
+                "pv": 33.3, "grid_import": 0.0, "grid_export": 0.0, "charge": 17.8,
+                "discharge": 17.6, "eps": 0.0, "consumption": 29.2, "date": "2026-10-20",
+            },
         },
     }
 

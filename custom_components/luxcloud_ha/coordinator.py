@@ -14,10 +14,13 @@ from homeassistant.helpers.update_coordinator import (
 )
 from homeassistant.util import dt as dt_util
 
+from . import energy
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
 from .const import (
+    CONF_BILLING_DAY,
     CONF_ENABLE_FIRMWARE,
     CONF_ENABLE_SERIES,
+    DEFAULT_BILLING_DAY,
     DOMAIN,
     SLOW_EVERY,
 )
@@ -65,9 +68,11 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
         slow = (want_firmware or want_series) and (
             self._tick == 1 or self._tick % SLOW_EVERY == 0
         )
-        today = dt_util.now().strftime("%Y-%m-%d")
+        billing_day = int(options.get(CONF_BILLING_DAY, DEFAULT_BILLING_DAY))
+        now = dt_util.now()
+        today = now.strftime("%Y-%m-%d")
         try:
-            data = await self._async_fetch(slow, want_firmware, want_series, today)
+            data = await self._async_fetch(slow, want_firmware, want_series, today, billing_day)
         except LuxCloudAuthError as err:
             self.failed_updates += 1
             raise ConfigEntryAuthFailed(str(err)) from err
@@ -87,6 +92,12 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
                 self._cache[key] = data[key]
             elif self._cache.get(key):
                 data[key] = self._cache[key]
+
+        # Kỳ hoá đơn / năm / hôm qua: phần nào lần này lỗi thì giữ bản cũ CÙNG kỳ.
+        data["periods"] = energy.merge_periods(
+            data.get("periods"), self._cache.get("periods"), now.date(), billing_day
+        )
+        self._cache["periods"] = data["periods"]
 
         # Chuỗi "hôm nay" chỉ lấy ở nhịp chậm: qua nửa đêm, bản cache là của
         # HÔM QUA nhưng vẫn được trình bày là hôm nay cho tới nhịp chậm kế tiếp
@@ -122,7 +133,7 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
             raise HomeAssistantError(f"LuxCloud không phản hồi khi ghi {what}: {err}") from err
 
     async def _async_fetch(
-        self, slow: bool, firmware: bool, series: bool, date_text: str
+        self, slow: bool, firmware: bool, series: bool, date_text: str, billing_day: int
     ) -> dict:
         """Một lần poll; phiên hết hạn thì đăng nhập lại rồi thử ĐÚNG một lần nữa.
 
@@ -133,7 +144,11 @@ class LuxCloudCoordinator(TimestampDataUpdateCoordinator[dict]):
         """
         async def fetch() -> dict:
             return await self.api.async_fetch_all(
-                slow=slow, date_text=date_text, firmware=firmware, series=series
+                slow=slow,
+                date_text=date_text,
+                firmware=firmware,
+                series=series,
+                billing_day=billing_day,
             )
 
         try:

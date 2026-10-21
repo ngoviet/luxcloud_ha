@@ -109,7 +109,7 @@ async def test_every_options_field_is_labelled_and_described(hass, patched_api) 
     entry = await setup_luxcloud(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     fields = _field_names(result["data_schema"])
-    assert fields == {"scan_interval", "enable_series", "enable_firmware"}
+    assert fields == {"scan_interval", "enable_series", "enable_firmware", "billing_day"}
 
     strings = await async_get_translations(hass, "en", "options", {DOMAIN})
     assert strings, "HA không đọc được chuỗi tuỳ chọn nào"

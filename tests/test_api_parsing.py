@@ -7,6 +7,7 @@ Mọi con số kỳ vọng ở đây lấy từ giá trị ĐO THẬT 2026-09-27
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 import aiohttp
 import pytest
@@ -678,6 +679,8 @@ def _fetch_all_handler(slow_ok: bool = True):
         const.EP_FIRMWARE_BY_TYPE: fx.firmware_rows("CHAA", (8, 0, 0)),
         const.EP_DAY_CURVE: fx.day_curve_payload(50),
         const.EP_TOTAL_COLUMN: fx.total_column_payload(),
+        const.EP_MONTH_COLUMN: lambda p: fx.month_column_payload(30 if p.get("month") == 9 else 28),
+        const.EP_YEAR_COLUMN: fx.year_column_payload(),
     }
     return route(mapping)
 
@@ -1056,3 +1059,58 @@ def test_fetch_all_runs_reads_in_parallel_under_the_cap() -> None:
     assert data["battery"]["cycles"] == 54
     assert data["dongle"]["sn"] == "DU61242846"
     assert data["firmware"]["latest_version"] == 8
+
+
+# ── Kỳ hoá đơn / năm (monthColumn + yearColumn) ────────────────
+
+
+def test_fetch_all_builds_periods_every_poll() -> None:
+    """Không phải khoá 'chậm': số tháng/năm cập nhật mỗi lần poll như fetcher cũ (5 phút)."""
+    api = make_api()
+    calls = patch_post(api, _fetch_all_handler())
+    data = run(api.async_fetch_all(slow=False, date_text="2026-09-28", billing_day=27))
+    month_calls = sorted(
+        (p["year"], p["month"]) for ep, p, _b in calls if ep == const.EP_MONTH_COLUMN
+    )
+    # 28/9 đã qua ngày 27 ⇒ kỳ 27/9→26/10 chỉ cần tháng 9 (hôm qua 27/9 cũng tháng 9)
+    assert month_calls == [(2026, 9)]
+    year_calls = [p for ep, p, _b in calls if ep == const.EP_YEAR_COLUMN]
+    assert [p["year"] for p in year_calls] == [2026]
+    columns = (const.EP_MONTH_COLUMN, const.EP_YEAR_COLUMN)
+    assert all(p["serialNum"] == "61204F0266" for ep, p, _b in calls if ep in columns)
+    month = data["periods"]["month"]
+    assert (month["start"], month["end"]) == ("2026-09-27", "2026-10-26")
+    assert month["pv"] == 60.0  # 27 + 28/9, mỗi ngày 30,0 kWh
+    assert data["periods"]["year"]["pv"] == 2700.0
+    assert data["periods"]["yesterday"]["date"] == "2026-09-27"
+
+
+def test_fetch_all_cycle_across_two_months() -> None:
+    api = make_api()
+    calls = patch_post(api, _fetch_all_handler())
+    data = run(api.async_fetch_all(slow=False, date_text="2026-10-05", billing_day=27))
+    months = sorted(p["month"] for ep, p, _b in calls if ep == const.EP_MONTH_COLUMN)
+    assert months == [9, 10]
+    # 27–30/9 (4 ngày) + 1–5/10 (5 ngày)
+    assert data["periods"]["month"]["pv"] == 270.0
+
+
+def test_column_failure_yields_empty_parts_not_an_exception() -> None:
+    api = make_api()
+    patch_post(api, route({const.EP_PLANT: fx.plant_payload()}))
+    data = run(api.async_fetch_all(slow=False, date_text="2026-10-05", billing_day=27))
+    assert data["periods"] == {"month": {}, "year": {}, "yesterday": {}}
+
+
+def test_column_without_success_is_a_failure() -> None:
+    api = make_api()
+    patch_post(
+        api,
+        route({
+            const.EP_MONTH_COLUMN: {"msg": "login"},
+            const.EP_YEAR_COLUMN: {"success": True, "data": []},
+        }),
+    )
+    out = run(api.get_periods(date(2026, 10, 5), 1))
+    assert out["month"] == {}
+    assert out["year"]["pv"] == 0.0

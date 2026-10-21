@@ -49,12 +49,14 @@
         "data": {
           "scan_interval": "Chu kỳ lấy dữ liệu (giây)",
           "enable_series": "Lấy chuỗi công suất hôm nay + tổng theo năm (~30 phút/lần)",
-          "enable_firmware": "Kiểm tra firmware mới (~30 phút/lần)"
+          "enable_firmware": "Kiểm tra firmware mới (~30 phút/lần)",
+          "billing_day": "Ngày đầu kỳ hoá đơn điện"
         },
         "data_description": {
           "scan_interval": "Số giây giữa hai lần lấy dữ liệu, từ 60 đến 3600. Tăng lên nếu hay bị lỗi đăng nhập khi app đang mở.",
           "enable_series": "Tắt để bớt tải: chuỗi công suất trong ngày và tổng sản lượng theo năm.",
-          "enable_firmware": "Tắt nếu không cần cảnh báo firmware mới."
+          "enable_firmware": "Tắt nếu không cần cảnh báo firmware mới.",
+          "billing_day": "Sensor \"… tháng\" và \"Tiết kiệm tháng\" cộng từ ngày này tháng trước tới hết ngày liền trước của tháng này (vd 27 ⇒ 27→26, khớp kỳ ghi chỉ số EVN). 1 = tháng dương lịch."
         }
       }
     }

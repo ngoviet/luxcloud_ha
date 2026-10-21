@@ -300,7 +300,7 @@ async def test_disabled_groups_are_not_requested(hass) -> None:
     api = _StubApi([BASE_DATA])
     coordinator = _coordinator(hass, api, _entry(**{CONF_ENABLE_FIRMWARE: False}))
     await coordinator._async_update_data()
-    assert api.fetch_kwargs[0] == {"firmware": False, "series": True}
+    assert api.fetch_kwargs[0] == {"firmware": False, "series": True, "billing_day": 1}
 
 
 class _DatedCurveApi(_StubApi):
@@ -331,3 +331,41 @@ async def test_yesterdays_curve_is_dropped_after_midnight(hass) -> None:
 
     assert "day_curve" not in data
     assert "day_curve" not in coordinator._cache
+
+
+async def test_billing_day_option_is_passed_to_the_api(hass) -> None:
+    from custom_components.luxcloud_ha.const import CONF_BILLING_DAY
+
+    api = _StubApi([BASE_DATA])
+    entry = _entry()
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(entry, options={**entry.options, CONF_BILLING_DAY: 27})
+    coordinator = LuxCloudCoordinator(hass, api, entry, 300)
+    await coordinator._async_update_data()
+    assert api.fetch_kwargs[0]["billing_day"] == 27
+
+
+async def test_periods_survive_one_failed_column_fetch(hass) -> None:
+    """monthColumn lỗi một lần: sensor tháng giữ số cũ (cùng kỳ), không nháy 'unknown'."""
+    from homeassistant.util import dt as dt_util
+
+    from custom_components.luxcloud_ha import energy
+
+    today = dt_util.now().date()
+    start = energy.billing_cycle(today, 1)[0].isoformat()
+    good = {
+        **BASE_DATA,
+        "periods": {
+            "month": {"pv": 12.3, "start": start},
+            "year": {"pv": 99.0, "year": today.year},
+            "yesterday": {},
+        },
+    }
+    failed = {**BASE_DATA, "periods": {"month": {}, "year": {}, "yesterday": {}}}
+    api = _StubApi([good, failed])
+    coordinator = _coordinator(hass, api, _entry())
+    await coordinator._async_update_data()
+    data = await coordinator._async_update_data()
+    assert data["periods"]["month"]["pv"] == 12.3
+    assert data["periods"]["year"]["pv"] == 99.0
+    assert data["periods"]["yesterday"] == {}

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -14,6 +15,9 @@ from homeassistant.components.sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     EntityCategory,
+    UnitOfElectricPotential,
+    UnitOfEnergy,
+    UnitOfFrequency,
     UnitOfPower,
     UnitOfTemperature,
 )
@@ -34,6 +38,8 @@ class LuxSensorDescription(SensorEntityDescription):
     value_fn: Callable[[dict], Any]
     dongle: bool = False
     attrs_fn: Callable[[dict], dict] | None = None
+    # Chỉ dùng với `state_class=TOTAL`: mốc đầu kỳ để thống kê hiểu cú về 0 là sang kỳ mới.
+    last_reset_fn: Callable[[dict], datetime | None] | None = None
 
 
 def _sub(key: str) -> Callable[[dict], dict]:
@@ -52,6 +58,21 @@ def _ts(value):
         except ValueError:
             continue
     return None
+
+
+def _opt_int(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _scaled(value, divisor: float, digits: int):
+    """Số thô của runtime (vacr ×10, fac ×100) → đơn vị thật; thiếu/sai ⇒ None."""
+    try:
+        return round(float(value) / divisor, digits)
+    except (TypeError, ValueError):
+        return None
 
 
 def _num(value):
@@ -80,6 +101,98 @@ def _kwh(value):
     return round(number * _KWH_SCALE.get(unit, 1.0), 3)
 
 
+def _period(part: str, metric: str) -> Callable[[dict], Any]:
+    return lambda d: (_sub("periods")(d).get(part) or {}).get(metric)
+
+
+def _local_midnight(day: date) -> datetime:
+    return datetime(day.year, day.month, day.day, tzinfo=dt_util.DEFAULT_TIME_ZONE)
+
+
+def _period_reset(part: str) -> Callable[[dict], datetime | None]:
+    """Đầu kỳ hoá đơn (month) hoặc 1/1 (year), 00:00 giờ địa phương."""
+
+    def _fn(d: dict) -> datetime | None:
+        info = _sub("periods")(d).get(part) or {}
+        try:
+            if part == "month":
+                return _local_midnight(date.fromisoformat(info["start"]))
+            return _local_midnight(date(int(info["year"]), 1, 1))
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    return _fn
+
+
+def _period_attrs(part: str) -> Callable[[dict], dict]:
+    keys = ("start", "end") if part == "month" else ("year",)
+    return lambda d: {k: (_sub("periods")(d).get(part) or {}).get(k) for k in keys}
+
+
+# (khoá, tên, icon) — năng lượng theo kỳ hoá đơn / năm từ monthColumn & yearColumn.
+_PERIOD_METRICS = (
+    ("pv", "PV", "mdi:solar-power"),
+    ("grid_import", "Mua lưới", "mdi:transmission-tower-import"),
+    ("charge", "Sạc pin", "mdi:battery-plus-variant"),
+    ("discharge", "Xả pin", "mdi:battery-minus-variant"),
+    ("eps", "EPS", "mdi:home-import-outline"),
+    ("consumption", "Tiêu thụ", "mdi:home-lightning-bolt"),
+)
+_PERIODS = (("month", "tháng"), ("year", "năm"))
+_TARIFF_NOTE = (
+    "Tiền điện nếu không có NLMT (theo tổng tiêu thụ) trừ tiền điện thực trả (theo điện mua "
+    "lưới); giá bậc thang EVN QĐ 4495/QĐ-BCT + VAT 8%."
+)
+
+
+def _savings_attrs(part: str) -> Callable[[dict], dict]:
+    return lambda d: {**_period_attrs(part)(d), "cach_tinh": _TARIFF_NOTE}
+
+
+PERIOD_SENSORS: tuple[LuxSensorDescription, ...] = (
+    *(
+        LuxSensorDescription(
+            key=f"{part}_{metric}",
+            name=f"{label} {suffix}",
+            icon=icon,
+            native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+            device_class=SensorDeviceClass.ENERGY,
+            state_class=SensorStateClass.TOTAL,
+            value_fn=_period(part, metric),
+            last_reset_fn=_period_reset(part),
+            attrs_fn=_period_attrs(part),
+        )
+        for part, suffix in _PERIODS
+        for metric, label, icon in _PERIOD_METRICS
+    ),
+    *(
+        LuxSensorDescription(
+            key=f"{part}_savings",
+            name=f"Tiết kiệm {suffix}",
+            icon="mdi:cash-multiple",
+            native_unit_of_measurement="VND",
+            device_class=SensorDeviceClass.MONETARY,
+            state_class=SensorStateClass.TOTAL,
+            suggested_display_precision=0,
+            value_fn=_period(part, "savings"),
+            last_reset_fn=_period_reset(part),
+            attrs_fn=_savings_attrs(part),
+        )
+        for part, suffix in _PERIODS
+    ),
+    LuxSensorDescription(
+        # Số CHỐT của ngày hôm qua theo cloud (monthColumn) — dùng cho bản tin sáng.
+        key="consumption_yesterday",
+        name="Tiêu thụ hôm qua",
+        icon="mdi:calendar-check",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        value_fn=_period("yesterday", "consumption"),
+        attrs_fn=lambda d: dict(_sub("periods")(d).get("yesterday") or {}),
+    ),
+)
+
+
 def _quick_state(d: dict) -> str | None:
     """Trạng thái task quick; getStatusInfo lỗi ⇒ `None` (không phải `idle`)."""
     quick = _sub("quick")(d)
@@ -100,6 +213,44 @@ def _bits_on(d: dict) -> int | None:
 
 
 SENSORS: tuple[LuxSensorDescription, ...] = (
+    # ── Lưới (runtime) — nguồn dự phòng cho phát hiện mất điện lưới ──
+    LuxSensorDescription(
+        key="grid_voltage",
+        name="Điện áp lưới",
+        icon="mdi:flash",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: _scaled(_sub("runtime")(d).get("vacr"), 10, 1),
+    ),
+    LuxSensorDescription(
+        key="grid_frequency",
+        name="Tần số lưới",
+        icon="mdi:cosine-wave",
+        native_unit_of_measurement=UnitOfFrequency.HERTZ,
+        device_class=SensorDeviceClass.FREQUENCY,
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: _scaled(_sub("runtime")(d).get("fac"), 100, 2),
+    ),
+    LuxSensorDescription(
+        # Bitmask: 0x40 | 0x80 bật = đang chạy không lưới (xem binary_sensor.GRID_OFF_MASK).
+        key="inverter_status",
+        name="Mã trạng thái inverter",
+        icon="mdi:state-machine",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _opt_int(_sub("runtime")(d).get("status")),
+        attrs_fn=lambda d: {"status_text": _sub("runtime")(d).get("statusText", "")},
+    ),
+    LuxSensorDescription(
+        # Giờ inverter ghi trong bản runtime cloud đang giữ — đo ĐỘ TƯƠI thật của số lưới
+        # (dongle mất mạng thì cloud vẫn trả bản cũ, giờ này đứng yên).
+        key="runtime_time",
+        name="Dữ liệu inverter lúc",
+        icon="mdi:clock-outline",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: _ts(_sub("runtime")(d).get("deviceTime")),
+    ),
     # ── Dongle (device riêng) ─────────────────────────────────
     LuxSensorDescription(
         key="dongle_firmware",
@@ -341,7 +492,8 @@ async def async_setup_entry(
     serial = entry.data[CONF_SERIAL]
     parent_id = parent_device_id(hass, serial, entry.entry_id)
     async_add_entities(
-        LuxCloudSensor(coordinator, serial, desc, parent_id) for desc in SENSORS
+        LuxCloudSensor(coordinator, serial, desc, parent_id)
+        for desc in (*SENSORS, *PERIOD_SENSORS)
     )
 
 
@@ -370,6 +522,12 @@ class LuxCloudSensor(CoordinatorEntity[LuxCloudCoordinator], SensorEntity):
     @property
     def native_value(self):
         return self.entity_description.value_fn(self.coordinator.data or {})
+
+    @property
+    def last_reset(self) -> datetime | None:
+        if self.entity_description.last_reset_fn is None:
+            return None
+        return self.entity_description.last_reset_fn(self.coordinator.data or {})
 
     @property
     def extra_state_attributes(self) -> dict | None:

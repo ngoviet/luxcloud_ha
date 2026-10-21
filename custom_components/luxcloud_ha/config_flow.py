@@ -13,16 +13,20 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from .api import LuxCloudApi, LuxCloudApiError, LuxCloudAuthError
 from .const import (
     CONF_ACCOUNT,
+    CONF_BILLING_DAY,
     CONF_ENABLE_FIRMWARE,
     CONF_ENABLE_SERIES,
     CONF_PASSWORD,
     CONF_REGION,
     CONF_SCAN_INTERVAL,
     CONF_SERIAL,
+    DEFAULT_BILLING_DAY,
     DEFAULT_REGION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_BILLING_DAY,
     MAX_SCAN_INTERVAL,
+    MIN_BILLING_DAY,
     MIN_SCAN_INTERVAL,
     REGIONS,
 )
@@ -150,7 +154,7 @@ class LuxCloudConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class LuxCloudOptionsFlow(OptionsFlow):
-    """Chu kỳ poll + bật/tắt dữ liệu 'chậm'."""
+    """Chu kỳ poll + bật/tắt dữ liệu 'chậm' + ngày đầu kỳ hoá đơn."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
@@ -167,6 +171,9 @@ class LuxCloudOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_ENABLE_FIRMWARE, default=opts.get(CONF_ENABLE_FIRMWARE, True)
                 ): bool,
+                vol.Optional(
+                    CONF_BILLING_DAY, default=opts.get(CONF_BILLING_DAY, DEFAULT_BILLING_DAY)
+                ): vol.All(int, vol.Range(min=MIN_BILLING_DAY, max=MAX_BILLING_DAY)),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

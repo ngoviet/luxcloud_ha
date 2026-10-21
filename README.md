@@ -15,7 +15,7 @@ localised fault history, BMS cell detail, the firmware catalogue, the intraday p
 yearly totals and the HR[179] configuration bits. It can also **write** the handful of settings
 only the cloud exposes.
 
-> **36 entities, 2 devices.** 29 read-only entities, plus 3 `switch` entities for the HR[179]
+> **55 entities, 2 devices.** 48 read-only entities, plus 3 `switch` entities for the HR[179]
 > configuration bits a local Modbus integration does not expose, 4 `button`s for
 > quick charge/discharge, and a `luxcloud_ha.set_bit` service.
 > See [Writing to the inverter](#writing-to-the-inverter).
@@ -35,6 +35,7 @@ replace a local integration — it fills the gaps the local one has no access to
 | Fault history with localised text | ⛔ | ✅ (server returns text in your app language) |
 | Firmware catalogue + version check | ⛔ | ✅ per device type |
 | Intraday power curve, yearly totals | ⛔ | ✅ |
+| Billing-cycle / yearly energy + savings, yesterday's final total | ⛔ (only counters you build yourself) | ✅ from the cloud's own daily/monthly tables |
 | BMS cell min/max voltage & temperature, cycles | partial | ✅ |
 | Works when the inverter is on another network | ⛔ | ✅ |
 
@@ -45,11 +46,15 @@ LuxPower cloud account are.
 
 ## Features
 
-- **36 entities across 2 devices** — one device per inverter, plus the datalogger as a
+- **55 entities across 2 devices** — one device per inverter, plus the datalogger as a
   separate device linked with `via_device`.
 - **Config flow with validation** — credentials and serial are verified during setup, plus a
   reauth step and an options step (no YAML at all).
 - **Adjustable polling** — 60 s to 3600 s (default 300 s).
+- **Billing-cycle energy** — PV, grid import, battery charge/discharge, EPS and consumption for
+  the current billing cycle and calendar year, savings in VND, and yesterday's final consumption,
+  from the cloud's `monthColumn`/`yearColumn` tables (refreshed every poll). The cycle start day is
+  an option (`1` = calendar month; e.g. `27` = 27th → 26th like an EVN meter-reading cycle).
 - **Slow-key scheduling** — firmware catalogue, intraday curve and yearly totals are fetched
   every 6th poll (~30 min), so the fast path stays cheap.
 - **Writes only what the cloud owns** — 3 `switch` entities plus quick charge/discharge
@@ -114,6 +119,7 @@ Later, under **Configure** on the integration card (no restart needed):
 | Scan interval | Change the polling period |
 | Enable series | Intraday power curve + yearly totals |
 | Enable firmware | Firmware catalogue lookup (always uses the `as` host) |
+| Billing day | First day of the billing cycle for the `*_thang` sensors, 1–28 (default 1 = calendar month) |
 
 Multiple inverters: add the integration once per serial number. Each entry keeps its own cloud
 session, so two inverters — even on two different accounts — do not log each other out. On an
@@ -147,6 +153,13 @@ entered.
 | `sensor.*_bit_cau_hinh_hr_179_dang_bat` | | Count of enabled HR[179] bits (map in attributes) |
 | `sensor.*_trang_thai_quick_charge_discharge` | | Cloud-side quick charge/discharge state |
 | `sensor.*_tong_san_luong_plant` | kWh | Plant lifetime yield (converted to kWh when the cloud reports `MWh`) |
+| `sensor.*_{pv,mua_luoi,sac_pin,xa_pin,eps,tieu_thu}_thang` | kWh | PV / grid import / charge / discharge / EPS / consumption in the current **billing cycle** (`start`/`end` in attributes); `state_class: total` with `last_reset` = cycle start |
+| `sensor.*_{pv,mua_luoi,sac_pin,xa_pin,eps,tieu_thu}_nam` | kWh | Same six, current calendar year; `last_reset` = 1 January |
+| `sensor.*_tiet_kiem_thang` / `_tiet_kiem_nam` | VND | Savings: tiered EVN tariff (QĐ 4495/QĐ-BCT, 6 tiers) + 8 % VAT on total consumption **minus** the same on grid import |
+| `sensor.*_tieu_thu_hom_qua` | kWh | Yesterday's consumption as finalised by the cloud (other metrics + date in attributes); on the 1st it reads the previous month |
+| `sensor.*_dien_ap_luoi` / `_tan_so_luoi` | V / Hz | Grid voltage / frequency at the inverter input (`vacr`/10, `fac`/100) — `0` during an outage is a measurement, not unknown |
+| `sensor.*_ma_trang_thai_inverter` | | Raw `runtime.status` bitmask (`0x40`/`0x80` = off-grid), `status_text` in attributes |
+| `sensor.*_du_lieu_inverter_luc` | | Inverter clock time stamped on the runtime the cloud holds — use `now − this` as the **real** age of the grid readings (it stops moving when the dongle goes offline) |
 | `switch.*_grid_peak_shaving` | | `FUNC_GRID_PEAK_SHAVING` — **writes** (see below) |
 | `switch.*_gen_peak_shaving` | | `FUNC_GEN_PEAK_SHAVING` — **writes** |
 | `switch.*_active_power_limit_mode` | | `FUNC_ACTIVE_POWER_LIMIT_MODE` — **writes** |
@@ -263,6 +276,7 @@ a state — so a stale `off` is never mistaken for a real one.
 | 2.3 | Reliability fixes: log back in automatically when the cloud session expires (before, polling failed until a manual reload); a private cookie jar per entry; pick the plant/dongle that actually holds the configured serial on multi-plant accounts; reauth reloads the entry; the scan interval chosen during setup is honoured; `dongle_mat_ket_noi` shows "Problem" instead of an inverted "Connected"; yearly total no longer records negative energy at New Year; plant total understands `MWh`; a 401 re-logs in before asking for the password; reads run in parallel (max 4 in flight) and disabled firmware/series data is no longer fetched | ✅ `v1.2.2` |
 | 2.4 | Missing data is `unknown`, not a fake value: the off-grid flag no longer turns `on` when only the runtime request fails; "new firmware" no longer turns `on` when the inverter's `fwVersion` is missing; `pinv`/`prec` and the BMS sensors (cycles, cell voltages, cell delta, cell temperatures) no longer record `0` when the cloud omits them — a fake 0 on the `TOTAL_INCREASING` cycle counter was read as a meter reset and corrupted long-term statistics | ✅ `v1.2.3` |
 | 2.5 | Writes survive an expired cloud session: switches, buttons and `set_bit` log back in and resend once instead of failing until the next poll, and a wrong password during a write raises a readable error and opens the reauth flow (it used to surface as "Unknown error"); setup and reauth reject a serial the account does not list (it used to be accepted and leave every inverter entity empty); after midnight the "today" power curve no longer shows yesterday's data; more missing-data cases are `unknown` instead of a fake value — dongle-lost, quick-task state/flag, the config-bit count, and the latest catalogue firmware (was `-1`) | ✅ `v1.2.4` |
+| 2.6 | Billing-cycle and yearly energy (PV, grid import, charge, discharge, EPS, consumption), savings in VND, yesterday's final consumption, and grid voltage / frequency / status / runtime-time sensors — enough to retire a `command_line` fetcher; new `billing_day` option | ✅ `v1.3.0` |
 | 3 | Options polish, more translations | ⏳ planned |
 
 Submitting to the HACS default store is deliberately **not** planned: this integration talks to
@@ -289,7 +303,7 @@ All tooling runs from the repository root and needs no third-party packages beyo
 | Command | Purpose |
 |---|---|
 | `python tools/deploy_to_ha.py --restart` | push `custom_components/luxcloud_ha/` to a Home Assistant host over SSH, verify every file by md5, then restart and wait for it to come back |
-| `python tools/verify_live.py` | acceptance check: config entry, all 36 entities, the inverter↔dongle device link, and the count of deprecation/error lines **after the last boot only** |
+| `python tools/verify_live.py` | acceptance check: config entry, all 55 entities, the inverter↔dongle device link, and the count of deprecation/error lines **after the last boot only** |
 | `python tools/hass.py cfgcheck` | run `check_config` inside the Home Assistant container |
 | `python tools/make_brand.py` | regenerate `brand/{icon,icon@2x,logo}.png` with the standard library |
 | `python tools/setup_tests.py --run` | build the test virtualenv and run the suite |

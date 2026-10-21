@@ -20,8 +20,8 @@ import hass  # noqa: E402
 DOMAIN = "luxcloud_ha"
 TOOLS = pathlib.Path(__file__).parent
 
-# 23 sensor + 6 binary_sensor + 3 switch + 4 button = 36
-EXPECTED_ENTITIES = 36
+# 42 sensor (23 + 19 kỳ/năm/lưới, v1.3.0) + 6 binary_sensor + 3 switch + 4 button = 55
+EXPECTED_ENTITIES = 55
 
 
 def main() -> int:

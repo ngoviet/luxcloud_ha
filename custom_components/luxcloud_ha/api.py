@@ -10,10 +10,12 @@ import base64
 import json
 import logging
 import time
+from datetime import date
 from typing import Any
 
 import aiohttp
 
+from . import energy
 from .const import (
     AES_KEY,
     CONFIG_BIT_BLOCK,
@@ -27,6 +29,7 @@ from .const import (
     EP_FIRMWARE_BY_TYPE,
     EP_FUNCTION_CONTROL,
     EP_LOGIN,
+    EP_MONTH_COLUMN,
     EP_PLANT,
     EP_QUICK_ACTION,
     EP_QUICK_STATUS,
@@ -34,6 +37,7 @@ from .const import (
     EP_REMOTE_READ,
     EP_RUNTIME,
     EP_TOTAL_COLUMN,
+    EP_YEAR_COLUMN,
     FIRMWARE_BASE,
     FIRMWARE_TYPES,
     MAJOR_URL,
@@ -44,7 +48,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Số request chạy song song tối đa. Một lần poll có 8–11 request độc lập;
+# Số request chạy song song tối đa. Một lần poll có 11–15 request độc lập;
 # chạy tuần tự thì mỗi poll mất TỔNG thời gian phản hồi của tất cả. Song song
 # nhưng có trần để không dội cloud.
 MAX_PARALLEL_REQUESTS = 4
@@ -491,6 +495,25 @@ class LuxCloudApi:
             }
         return out
 
+    async def _column_rows(self, endpoint: str, params: dict) -> list[dict] | None:
+        """`data` của monthColumn/yearColumn; lỗi ⇒ `None` (khác với `[]` = cloud trả rỗng)."""
+        r = await self._post(endpoint, {"serialNum": self.serial, **params}) or {}
+        if not r.get("success"):
+            return None
+        rows = r.get("data")
+        return [x for x in rows if isinstance(x, dict)] if isinstance(rows, list) else None
+
+    async def get_periods(self, today: date, billing_day: int) -> dict:
+        """Kỳ hoá đơn + năm + hôm qua (xem `energy.build_periods`): 1–3 monthColumn + 1 yearColumn."""
+        months = energy.months_needed(today, billing_day)
+        results = await asyncio.gather(
+            *(self._column_rows(EP_MONTH_COLUMN, {"year": y, "month": m}) for y, m in months),
+            self._column_rows(EP_YEAR_COLUMN, {"year": today.year}),
+        )
+        return energy.build_periods(
+            today, billing_day, dict(zip(months, results[:-1], strict=True)), results[-1]
+        )
+
     async def get_firmware(self, standard_prefix: str = "") -> dict:
         """Danh mục firmware theo loại thiết bị; chọn loại khớp `standard` của inverter."""
         pref = (standard_prefix or "").strip().lower()
@@ -543,6 +566,7 @@ class LuxCloudApi:
         *,
         firmware: bool = True,
         series: bool = True,
+        billing_day: int = 1,
     ) -> dict:
         """Gọi các endpoint cần thiết, SONG SONG (tối đa `MAX_PARALLEL_REQUESTS`).
 
@@ -562,6 +586,7 @@ class LuxCloudApi:
             calls["plant"] = self.get_plant()
         calls["dongle"] = self.get_dongle()
         calls["event"] = self.get_events()
+        calls["periods"] = self.get_periods(date.fromisoformat(date_text), billing_day)
         if slow and series:
             calls["day_curve"] = self.get_day_curve(date_text)
             calls["total_years"] = self.get_total_years()

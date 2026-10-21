@@ -1,4 +1,4 @@
-"""Test setup đầy đủ: entry được load, 36 entity, liên kết device dongle→inverter.
+"""Test setup đầy đủ: entry được load, 55 entity, liên kết device dongle→inverter.
 
 Đây là test bắt regression cho hai quy tắc đắt giá trong CLAUDE.md:
   §3.5 dùng `via_device_id` + `async_get_device_id_by_identifier` (API cũ chết ở 2027.8)
@@ -37,6 +37,18 @@ EXPECTED_ENTITY_IDS = {
     "sensor.luxcloud_bit_cau_hinh_hr_179_dang_bat",
     "sensor.luxcloud_trang_thai_quick_charge_discharge",
     "sensor.luxcloud_tong_san_luong_plant",
+    # lưới (runtime) — nguồn dự phòng của phát hiện mất điện lưới
+    "sensor.luxcloud_dien_ap_luoi",
+    "sensor.luxcloud_tan_so_luoi",
+    "sensor.luxcloud_ma_trang_thai_inverter",
+    "sensor.luxcloud_du_lieu_inverter_luc",
+    # năng lượng kỳ hoá đơn / năm (monthColumn + yearColumn)
+    *(
+        f"sensor.luxcloud_{name}_{period}"
+        for name in ("pv", "mua_luoi", "sac_pin", "xa_pin", "eps", "tieu_thu", "tiet_kiem")
+        for period in ("thang", "nam")
+    ),
+    "sensor.luxcloud_tieu_thu_hom_qua",
     # ── inverter: binary_sensor ───────────────────────────────
     "binary_sensor.luxcloud_su_co_dang_hieu_luc",
     "binary_sensor.luxcloud_cloud_co_du_lieu",
@@ -74,7 +86,7 @@ async def test_setup_entry_loads_and_registers_every_entity(hass, patched_api) -
 
 async def test_entity_count_matches_the_documented_total(hass, patched_api) -> None:
     await setup_luxcloud(hass)
-    assert len(er.async_get(hass).entities) == 36
+    assert len(er.async_get(hass).entities) == 55
 
 
 async def test_switch_entities_are_exactly_the_non_overlapping_bits(hass, patched_api) -> None:

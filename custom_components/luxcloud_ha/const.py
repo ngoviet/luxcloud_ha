@@ -23,12 +23,16 @@ CONF_REGION = "region"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_ENABLE_SERIES = "enable_series"
 CONF_ENABLE_FIRMWARE = "enable_firmware"
+CONF_BILLING_DAY = "billing_day"
 
 DEFAULT_REGION = "vn"
 DEFAULT_SCAN_INTERVAL = 300          # 5 phút (giống scan_interval cũ của command_line)
 MIN_SCAN_INTERVAL = 60
 MAX_SCAN_INTERVAL = 3600
 SLOW_EVERY = 6                       # firmware + chuỗi ngày/năm: mỗi 6 lần poll (~30 phút)
+DEFAULT_BILLING_DAY = 1               # ngày đầu kỳ hoá đơn; 1 = tháng dương lịch (EVN mỗi nhà một ngày)
+MIN_BILLING_DAY = 1
+MAX_BILLING_DAY = 28                 # ≤ 28 để tháng nào cũng có ngày đó
 FORCE_REFRESH_WAIT = 3               # giây đợi cloud→dongle sau refreshInputData
 
 # Base URL theo khu vực (Version.java của APK)
@@ -61,6 +65,8 @@ EP_QUICK_STATUS = "/web/config/quickCharge/getStatusInfo"
 EP_FIRMWARE_BY_TYPE = "/web/maintain/appLocalUpdate/listForAppByType"
 EP_DAY_CURVE = "/api/analyze/chart/dayMultiLine"
 EP_TOTAL_COLUMN = "/api/inverterChart/totalColumn"
+EP_MONTH_COLUMN = "/api/inverterChart/monthColumn"   # 1 dòng/ngày, 0,1 kWh
+EP_YEAR_COLUMN = "/api/inverterChart/yearColumn"     # 1 dòng/tháng, 0,1 kWh
 EP_REMOTE_READ = "/web/maintain/remoteRead/read"
 
 # ── Đường GHI (Phase 2) ────────────────────────────────────────

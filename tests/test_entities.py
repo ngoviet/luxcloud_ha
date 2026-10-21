@@ -9,11 +9,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from custom_components.luxcloud_ha.binary_sensor import BINARY_SENSORS, LuxCloudBinarySensor
-from custom_components.luxcloud_ha.sensor import SENSORS
+from custom_components.luxcloud_ha.binary_sensor import (
+    BINARY_SENSORS,
+    LuxCloudBinarySensor,
+)
+from custom_components.luxcloud_ha.sensor import PERIOD_SENSORS, SENSORS, LuxCloudSensor
 from tests.conftest import full_dataset
 
-SENSOR_BY_KEY = {d.key: d for d in SENSORS}
+SENSOR_BY_KEY = {d.key: d for d in (*SENSORS, *PERIOD_SENSORS)}
 BINARY_BY_KEY = {d.key: d for d in BINARY_SENSORS}
 
 
@@ -35,10 +38,11 @@ def attrs_for(key: str, data: dict) -> dict:
 
 
 def test_entity_counts_match_the_documented_baseline() -> None:
-    """Baseline Phase 1: 29 entity = 23 sensor + 6 binary_sensor."""
-    assert len(SENSORS) == 23
+    """48 entity đọc = 27 sensor + 15 sensor kỳ/năm + 6 binary_sensor (v1.3.0)."""
+    assert len(SENSORS) == 27
+    assert len(PERIOD_SENSORS) == 15
     assert len(BINARY_SENSORS) == 6
-    assert len(SENSORS) + len(BINARY_SENSORS) == 29
+    assert len(SENSOR_BY_KEY) + len(BINARY_SENSORS) == 48
 
 
 def test_entity_keys_are_unique() -> None:
@@ -437,3 +441,107 @@ def test_firmware_available_survives_malformed_versions() -> None:
         data={"plant": {"fw_version": 3}, "firmware": {"latest_version": "abc"}}
     )
     assert entity.is_on is False
+
+
+# ── Lưới (runtime) ─────────────────────────────────────────────
+
+
+def test_grid_sensors_scale_raw_runtime_values() -> None:
+    data = full_dataset()
+    assert value("grid_voltage", data) == 221.7
+    assert value("grid_frequency", data) == 50.15
+    assert value("inverter_status", data) == 8
+    assert SENSOR_BY_KEY["inverter_status"].attrs_fn(data) == {"status_text": "normal"}
+
+
+def test_grid_sensors_read_zero_during_an_outage() -> None:
+    """Mất lưới thật (đo 2026-09-30 06:01): vacr 0, fac 0, status 192 — 0 là số đo, không phải 'không biết'."""
+    data = full_dataset()
+    data["runtime"].update(vacr=0, fac=0, status=192)
+    assert value("grid_voltage", data) == 0.0
+    assert value("grid_frequency", data) == 0.0
+    assert value("inverter_status", data) == 192
+
+
+def test_grid_sensors_unknown_without_runtime() -> None:
+    data = full_dataset()
+    data["runtime"] = {}
+    for key in ("grid_voltage", "grid_frequency", "inverter_status", "runtime_time"):
+        assert value(key, data) is None, key
+
+
+def test_runtime_time_is_timezone_aware() -> None:
+    ts = value("runtime_time", full_dataset())
+    assert ts is not None and ts.tzinfo is not None
+    assert (ts.hour, ts.minute, ts.second) == (7, 30, 15)
+
+
+# ── Kỳ hoá đơn / năm ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("month_pv", 765.9),
+        ("month_grid_import", 73.7),
+        ("month_charge", 387.3),
+        ("month_discharge", 385.0),
+        ("month_eps", 5.3),
+        ("month_consumption", 746.5),
+        ("year_pv", 2710.9),
+        ("year_consumption", 3254.7),
+        ("month_savings", 2295653),
+        ("year_savings", 8816232),
+        ("consumption_yesterday", 29.2),
+    ],
+)
+def test_period_sensors_read_the_periods_block(key, expected) -> None:
+    assert value(key, full_dataset()) == expected
+
+
+def test_period_sensors_unknown_when_part_missing() -> None:
+    data = full_dataset()
+    data["periods"] = {"month": {}, "year": {}, "yesterday": {}}
+    for desc in PERIOD_SENSORS:
+        assert desc.value_fn(data) is None, desc.key
+        if desc.last_reset_fn is not None:
+            assert desc.last_reset_fn(data) is None, desc.key
+
+
+def test_period_sensors_reset_at_the_start_of_the_period() -> None:
+    """TOTAL + last_reset: thống kê hiểu cú về 0 đầu kỳ là kỳ mới, không phải sản lượng âm."""
+    from homeassistant.components.sensor import SensorStateClass
+
+    data = full_dataset()
+    month = SENSOR_BY_KEY["month_consumption"]
+    year = SENSOR_BY_KEY["year_savings"]
+    assert month.state_class is SensorStateClass.TOTAL
+    assert year.state_class is SensorStateClass.TOTAL
+    reset = month.last_reset_fn(data)
+    assert (reset.year, reset.month, reset.day, reset.hour) == (2026, 9, 27, 0)
+    assert reset.tzinfo is not None
+    reset = year.last_reset_fn(data)
+    assert (reset.year, reset.month, reset.day) == (2026, 1, 1)
+
+
+def test_yesterday_has_no_state_class() -> None:
+    """Số của MỘT ngày đổi mỗi sáng — không phải tổng tích luỹ, không đưa vào thống kê."""
+    assert SENSOR_BY_KEY["consumption_yesterday"].state_class is None
+
+
+def test_period_attributes_name_the_period() -> None:
+    data = full_dataset()
+    assert SENSOR_BY_KEY["month_pv"].attrs_fn(data) == {"start": "2026-09-27", "end": "2026-10-26"}
+    assert SENSOR_BY_KEY["year_pv"].attrs_fn(data) == {"year": 2026}
+    assert SENSOR_BY_KEY["consumption_yesterday"].attrs_fn(data)["date"] == "2026-10-20"
+    assert "bậc thang" in SENSOR_BY_KEY["month_savings"].attrs_fn(data)["cach_tinh"]
+
+
+def test_sensor_entity_exposes_last_reset() -> None:
+    coordinator = SimpleNamespace(data=full_dataset())
+    entity = LuxCloudSensor.__new__(LuxCloudSensor)
+    entity.coordinator = coordinator
+    entity.entity_description = SENSOR_BY_KEY["month_pv"]
+    assert entity.last_reset.day == 27
+    entity.entity_description = SENSOR_BY_KEY["grid_voltage"]
+    assert entity.last_reset is None
