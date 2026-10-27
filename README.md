@@ -1,4 +1,6 @@
-# LuxCloud (LuxPower Cloud API) — Home Assistant Integration
+# LuxCloud for Home Assistant
+
+<!-- readme-axi type=ha -->
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![GitHub release](https://img.shields.io/github/release/ngoviet/luxcloud_ha.svg)](https://github.com/ngoviet/luxcloud_ha/releases)
@@ -7,44 +9,38 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5)](https://www.home-assistant.io)
 [![Python](https://img.shields.io/badge/python-3.14%2B-blue)](https://www.python.org)
 
+**English** · [Tiếng Việt](README.vi.md)
+
+Reads your **LuxPower** hybrid inverter through the **LuxCloud** cloud API (LuxPower Cloud API) —
+the same data the phone app shows, including the parts a local Modbus connection cannot see:
+dongle health, localised fault history, BMS cell detail, the firmware catalogue, the intraday
+power curve, yearly totals and the HR[179] configuration bits. It can also **write** the handful
+of settings only the cloud exposes.
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ngoviet&repository=luxcloud_ha&category=integration)
 
-Reads your **LuxPower** hybrid inverter through the **LuxCloud** cloud API — the same data the
-phone app shows, including the parts a local Modbus connection cannot see: dongle health,
-localised fault history, BMS cell detail, the firmware catalogue, the intraday power curve,
-yearly totals and the HR[179] configuration bits. It can also **write** the handful of settings
-only the cloud exposes.
+> 🇻🇳 Built and maintained by one person in Việt Nam — if it saves you time, please
+> [support the project](#support-the-project).
 
-> **55 entities, 2 devices.** 48 read-only entities, plus 3 `switch` entities for the HR[179]
-> configuration bits a local Modbus integration does not expose, 4 `button`s for
-> quick charge/discharge, and a `luxcloud_ha.set_bit` service.
-> See [Writing to the inverter](#writing-to-the-inverter).
+## Contents
 
----
-
-## Why cloud, when local Modbus already exists?
-
-Both paths reach the same inverter, but they carry different data. This integration does **not**
-replace a local integration — it fills the gaps the local one has no access to.
-
-| Data | Local Modbus (e.g. `lxp_modbus`) | This integration (cloud) |
-|---|---|---|
-| Live power / voltage / SOC | ✅ real time | ✅ but delayed by the dongle upload interval |
-| Full register read/write, settings | ✅ | ⛔ only what the app exposes |
-| Dongle connectivity + last cloud report | ⛔ | ✅ `lost`, `lastUpdateTime` |
-| Fault history with localised text | ⛔ | ✅ (server returns text in your app language) |
-| Firmware catalogue + version check | ⛔ | ✅ per device type |
-| Intraday power curve, yearly totals | ⛔ | ✅ |
-| Billing-cycle / yearly energy + savings, yesterday's final total | ⛔ (only counters you build yourself) | ✅ from the cloud's own daily/monthly tables |
-| BMS cell min/max voltage & temperature, cycles | partial | ✅ |
-| Works when the inverter is on another network | ⛔ | ✅ |
-
-Local network access to the inverter is **not** required. Only an internet connection and a
-LuxPower cloud account are.
-
----
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Entities](#entities)
+- [Writing to the inverter](#writing-to-the-inverter)
+- [Troubleshooting](#troubleshooting)
+- [How it works](#how-it-works)
+- [Roadmap](#roadmap)
+- [Development](#development)
 
 ## Features
+
+**55 entities, 2 devices.** 48 read-only entities, plus 3 `switch` entities for the HR[179]
+configuration bits a local Modbus integration does not expose, 4 `button`s for quick
+charge/discharge, and a `luxcloud_ha.set_bit` service.
+See [Writing to the inverter](#writing-to-the-inverter).
 
 - **55 entities across 2 devices** — one device per inverter, plus the datalogger as a
   separate device linked with `via_device`.
@@ -71,8 +67,6 @@ LuxPower cloud account are.
 - **Real fault text** — the cloud returns already-localised fault strings (Vietnamese here),
   no client-side translation table to maintain.
 
----
-
 ## Requirements
 
 | Requirement | Details |
@@ -81,8 +75,6 @@ LuxPower cloud account are.
 | Python | 3.14 (shipped with that HA release) |
 | LuxPower account | The account you use in the LuxCloud app |
 | Inverter | LuxPower hybrid with a WiFi/LAN datalogger that is online |
-
----
 
 ## Installation
 
@@ -98,7 +90,10 @@ LuxPower cloud account are.
 Copy `custom_components/luxcloud_ha/` into your Home Assistant `config/custom_components/`
 directory and restart.
 
----
+### Removing
+
+**Settings → Devices & Services → LuxCloud → ⋮ → Delete.** Entities and both devices are
+removed; your account and the inverter settings are untouched.
 
 ## Configuration
 
@@ -128,8 +123,6 @@ entered.
 
 > **Region matters.** The firmware catalogue only answers on the `as` host — regional hosts
 > return zero rows. This is handled internally; the setting is only for the main API.
-
----
 
 ## Entities
 
@@ -168,7 +161,7 @@ entered.
 | `binary_sensor.*_su_co_dang_hieu_luc` | | A fault is currently active |
 | `binary_sensor.*_dang_chay_quick_charge_discharge` | | A quick charge/discharge task is running |
 | `binary_sensor.*_co_firmware_moi` | | Newer firmware available than installed |
-| `binary_sensor.*_dang_chay_khong_luoi_eps` | Running off-grid — derived from `runtime.status & 0xC0` (bits `0x40`/`0x80`), **not** from the non-existent `isOffGrid` key (fixed 2026-09-30). Shows `unknown` — not `on` — when the cloud returns no grid measurement (since `v1.2.3`). On installations that already had the entity, the registry keeps the old entity_id `..._isoffgrid`. |
+| `binary_sensor.*_dang_chay_khong_luoi_eps` | | Running off-grid — derived from `runtime.status & 0xC0` (bits `0x40`/`0x80`), **not** from the non-existent `isOffGrid` key (fixed 2026-09-30). Shows `unknown` — not `on` — when the cloud returns no grid measurement (since `v1.2.3`). On installations that already had the entity, the registry keeps the old entity_id `..._isoffgrid`. |
 | `binary_sensor.*_cloud_co_du_lieu` | | Cloud returned usable runtime data |
 
 ### Device 2 — the datalogger (linked with `via_device`)
@@ -183,8 +176,6 @@ entered.
 > Entity IDs use the device name (`LuxCloud`) as a prefix, so ids read
 > `sensor.luxcloud_chu_ky_pin`. Rename devices in Home Assistant freely — the entity ids
 > follow your rename.
-
----
 
 ## Writing to the inverter
 
@@ -221,9 +212,18 @@ you genuinely need one, and pick a single source of truth for each setting.
 Switches report `unavailable` when the cloud has not returned the bit map, rather than guessing
 a state — so a stale `off` is never mistaken for a real one.
 
----
+## Troubleshooting
 
-## Notes and limitations
+| Symptom | Check |
+|---|---|
+| Cannot connect during setup | Region (try the one your app uses), then confirm the inverter shows online in the app |
+| Invalid auth | Password is case sensitive; Google/Apple sign-ins need a password set first |
+| Entities unavailable | The dongle is offline — power, network or unplugged |
+| "Re-authentication required" | Password changed in the app — enter the new one in the notification; the integration reloads on its own |
+| Values frozen | Compare `binary_sensor.*_dongle_mat_ket_noi` and the last cloud report timestamp |
+| No firmware found | Device type is derived from the firmware code prefix; open an issue with your `fwCode` |
+
+### Notes and limitations
 
 - **Unofficial API.** Everything here was reverse engineered from the LuxCloud Android app
   (4.9.8) and verified against a live account. LuxPower can change or restrict it at any time
@@ -250,20 +250,27 @@ a state — so a stale `off` is never mistaken for a real one.
   write endpoints (`remoteSet/functionControl`) were confirmed on a single `CHAA` 6.5 kW unit.
   Treat the first write on a different model as something to watch.
 
----
+## How it works
 
-## Troubleshooting
+### Why cloud, when local Modbus already exists?
 
-| Symptom | Check |
-|---|---|
-| Cannot connect during setup | Region (try the one your app uses), then confirm the inverter shows online in the app |
-| Invalid auth | Password is case sensitive; Google/Apple sign-ins need a password set first |
-| Entities unavailable | The dongle is offline — power, network or unplugged |
-| "Re-authentication required" | Password changed in the app — enter the new one in the notification; the integration reloads on its own |
-| Values frozen | Compare `binary_sensor.*_dongle_mat_ket_noi` and the last cloud report timestamp |
-| No firmware found | Device type is derived from the firmware code prefix; open an issue with your `fwCode` |
+Both paths reach the same inverter, but they carry different data. This integration does **not**
+replace a local integration — it fills the gaps the local one has no access to.
 
----
+| Data | Local Modbus (e.g. `lxp_modbus`) | This integration (cloud) |
+|---|---|---|
+| Live power / voltage / SOC | ✅ real time | ✅ but delayed by the dongle upload interval |
+| Full register read/write, settings | ✅ | ⛔ only what the app exposes |
+| Dongle connectivity + last cloud report | ⛔ | ✅ `lost`, `lastUpdateTime` |
+| Fault history with localised text | ⛔ | ✅ (server returns text in your app language) |
+| Firmware catalogue + version check | ⛔ | ✅ per device type |
+| Intraday power curve, yearly totals | ⛔ | ✅ |
+| Billing-cycle / yearly energy + savings, yesterday's final total | ⛔ (only counters you build yourself) | ✅ from the cloud's own daily/monthly tables |
+| BMS cell min/max voltage & temperature, cycles | partial | ✅ |
+| Works when the inverter is on another network | ⛔ | ✅ |
+
+Local network access to the inverter is **not** required. Only an internet connection and a
+LuxPower cloud account are.
 
 ## Roadmap
 
@@ -287,13 +294,6 @@ nothing — installing and updating it as a HACS custom repository is the same c
 
 Writes stay deliberately narrow: only the settings the cloud owns, and only bits a local Modbus
 integration does not already control.
-
----
-
-## Removing
-
-**Settings → Devices & Services → LuxCloud → ⋮ → Delete.** Entities and both devices are
-removed; your account and the inverter settings are untouched.
 
 ## Development
 
@@ -396,9 +396,10 @@ value is documentation for readers and HACS, not something HA enforces.
   <img src="https://raw.githubusercontent.com/ngoviet/.github/main/assets/support/vietqr-card.svg" width="300" alt="VietQR — MB Bank — NGO DUC VIET — 911051212">
 </p>
 
-<p align="center"><sub>🇻🇳 VietQR: quét bằng app ngân hàng bất kỳ, nội dung <code>Ung ho luxcloud_ha</code>. Cảm ơn bạn! · Thank you for keeping this project alive.</sub></p>
+<p align="center"><sub>🇻🇳 VietQR: scan with any Vietnamese banking app, transfer note <code>Ung ho luxcloud_ha</code>. Thank you for keeping this project alive!</sub></p>
+<p align="center"><sub>Crypto (BEP20 network): <code>0x57f07d44fb581cddc028a0c67d63a8cc05aa6caa</code> · USDT · USDC · BNB · ETH · BTC</sub></p>
 <!-- support:end -->
 
 ## License
 
-[MIT](LICENSE) © 2026 ngoviet
+[MIT](LICENSE) © Ngô Đức Việt. Not affiliated with or endorsed by LuxPower.
