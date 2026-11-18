@@ -49,8 +49,8 @@ def load_env() -> dict[str, str]:
 
 
 ENV = load_env()
-HOST, USER, PASSWORD = ENV.get("HA_HOST", "192.168.10.15"), ENV.get("HA_USER", "vokupt"), ENV.get("HA_PASS", "")
-TOKEN, BASE = ENV.get("HA_TOKEN", ""), f"http://{ENV.get('HA_HOST', '192.168.10.15')}:8123"
+HOST, USER, PASSWORD = ENV.get("HA_HOST", "192.168.12.20"), ENV.get("HA_USER", "vokupt"), ENV.get("HA_PASS", "")
+TOKEN, BASE = ENV.get("HA_TOKEN", ""), f"http://{ENV.get('HA_HOST', '192.168.12.20')}:8123"
 
 
 def connect() -> paramiko.SSHClient:

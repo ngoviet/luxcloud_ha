@@ -50,7 +50,7 @@ def load_env() -> dict[str, str]:
 
 
 ENV = load_env()
-HOST = ENV.get("HA_HOST", "192.168.10.15")
+HOST = ENV.get("HA_HOST", "192.168.12.20")
 USER = ENV.get("HA_USER", "vokupt")
 HA_PASS = ENV.get("HA_PASS", "")
 HA_TOKEN = ENV.get("HA_TOKEN", "")

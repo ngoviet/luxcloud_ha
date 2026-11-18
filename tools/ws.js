@@ -13,7 +13,7 @@ const fs = require('fs');
 const file = process.argv[2];
 const filter = process.argv[3] || null;
 const token = process.env.HA_TOKEN;
-const host = process.env.HA_HOST || '192.168.10.15';
+const host = process.env.HA_HOST || '192.168.12.20';
 
 if (!file) { console.error('thiếu cmds.json'); process.exit(2); }
 if (!token) { console.error('thiếu HA_TOKEN'); process.exit(2); }
